@@ -31,12 +31,12 @@ def weighted_selection(cat_1, cat_2, cat_3, p1, p2, p3):
     return chosen
 
 
-def location_hider(Info, player, seekers):
+def location_hider(Info, tickets, seekers):
     """
     Compiles a list of all possible locations that the player can be on. These are split into 3 categories and a
     weighted selection is performed to determine one station where the player can be.
     :param Info: list of all stations and their connections
-    :param player: the Player class
+    :param tickets: list of tickets used by player in previous round
     :param seekers: List of seekers
     :return: Possible location of Player
     """
@@ -46,7 +46,6 @@ def location_hider(Info, player, seekers):
     cat_3 = []  # underground + taxi + bus
     for i in range(len(seekers)):
         loc_seekers.append(seekers[i].position)
-    tickets = player.tickets
     for i in range(len(Info)):
         station = Info[i][0]
         bus_con = Info[i][2]
@@ -73,3 +72,4 @@ def location_hider(Info, player, seekers):
     location = weighted_selection(cat_1, cat_2, cat_3, 0.3, 0.3, 0.4)
 
     return location
+
