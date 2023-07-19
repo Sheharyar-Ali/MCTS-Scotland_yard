@@ -1,5 +1,8 @@
-from data_read import Info
+import numpy as np
+
+from data_read import Info, Q_values, Visits
 from functions import *
+
 
 class Ticket:
     def __init__(self, type):
@@ -37,7 +40,7 @@ class Player:
         if destination in self.connections[ticket] and self.tickets[ticket] > 0:
 
             return True
-        elif self.tickets[ticket]<=0 and print_warning:
+        elif self.tickets[ticket] <= 0 and print_warning:
             print("Insufficient tickets for this move")
         elif print_warning:
             print("Can not move to new station from current station")
@@ -49,7 +52,7 @@ class Player:
             return True
         return False
 
-    def move_player(self,destination,ticket):
+    def move_player(self, destination, ticket):
         if self.can_move(destination=destination, ticket=ticket):
             self.position = destination
             self.tickets[ticket] -= 1
@@ -95,7 +98,7 @@ class Player:
         :param Info: List containing map info
         :return: Station to move to
         """
-        loc_target = (0,0)
+        loc_target = (0, 0)
         possible_station = []
         possible_x = []
         possible_y = []
@@ -120,14 +123,35 @@ class Player:
         chosen = possible_station[np.argmax(difference)]
         return chosen
 
+    def UCT(self, parent, child, transport, Q_values=Q_values, Visits=Visits):
+        scores = []
+        x_i = 0
+        n_p = 0
+        n_i = 0
+        for i in range(len(Q_values)):
+            if Q_values[i][0] == parent and Q_values[i][1] == child and Q_values[i][2] == transport:
+                x_i = Q_values[i][3]
+            if Q_values[i][0] == parent and Q_values[i][1] == child:
+                scores.append(Q_values[i][3])
+        scores = np.array(scores)
+        for i in range(len(Visits)):
+            if Visits[i] == parent:
+                n_p = Visits[i][1]
+            if Visits[i] == child:
+                n_i = Visits[i][1]
+        C = 0.5
+        W = 5
+        x_a = np.average(scores)
+        V = x_i + (C * np.sqrt(np.log(n_p) / n_i)) + (W * (x_a / (n_i * (1 - x_i) + 1)))
+
+        return V
 
 
 X = Player("player", 189, [0, 0, 1])
-S1 = Player("seeker", 163, [10,10,10])
-S2 = Player("seeker", 192, [10,10,10])
-S3 = Player("seeker", 193, [10,10,10])
+S1 = Player("seeker", 163, [10, 10, 10])
+S2 = Player("seeker", 192, [10, 10, 10])
+S3 = Player("seeker", 193, [10, 10, 10])
 Seekers = [S1, S2, S3]
 
 check = location_hider(Info=Info, tickets=X.tickets, seekers=Seekers)
 print(S1.maximise_distance(target=144))
-

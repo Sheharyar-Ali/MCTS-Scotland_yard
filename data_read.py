@@ -5,12 +5,15 @@ file = open("Map_info.csv")
 lines = file.readlines()
 fixed = pd.DataFrame({})
 Info =[]
+Q_values =[]
+Visits=[]
 for line in lines:
     buffer = []
     line=line[:-1]
     columns = line.split(",")
     if columns[0] != "id":
         buffer.append(int(columns[0]))
+        Visits.append([int(columns[0]), 0])
         buffer.append((int(columns[1]),int(columns[2])))
         col2 = columns[3]
         if col2 !="0":
@@ -37,5 +40,14 @@ for line in lines:
         else:
             buffer.append([0])
         Info.append(buffer)
+
+for data in Info:
+    current_station = data[0]
+    for i in range(2,len(data)):
+        if data[i] != [0]:
+            for j in range(len(data[i])):
+                Q_values.append([current_station, data[i][j], i-2, 0])
+
+
 
 
