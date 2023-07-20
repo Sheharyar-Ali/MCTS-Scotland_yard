@@ -31,12 +31,12 @@ def weighted_selection(cat_1, cat_2, cat_3, p1, p2, p3):
     return chosen
 
 
-def location_hider(Info, tickets, seekers):
+def location_hider(Info, ticket, seekers):
     """
     Compiles a list of all possible locations that the player can be on. These are split into 3 categories and a
     weighted selection is performed to determine one station where the player can be.
     :param Info: list of all stations and their connections
-    :param tickets: list of tickets used by player in previous round
+    :param ticket: Ticket used by player in previous round
     :param seekers: List of seekers
     :return: Possible location of Player
     """
@@ -63,8 +63,8 @@ def location_hider(Info, tickets, seekers):
                     possible_locations = cat_3
                 else:
                     possible_locations = cat_1
-                if (target in bus_con and tickets[0] > 0) or (target in underground_con and tickets[1] > 0) or (
-                        target in taxi_con and tickets[2] > 0):
+                if (target in bus_con and ticket == 0) or (target in underground_con and ticket == 1) or (
+                        target in taxi_con and ticket == 2):
                     check = True
                 if check and target not in possible_locations and target not in loc_seekers:
                     possible_locations.append(target)
@@ -73,3 +73,31 @@ def location_hider(Info, tickets, seekers):
 
     return location
 
+def Q_value_update(current_value, alpha, gamma, reward, list_values):
+    if len(list_values)!=0:
+        future_q = max(list_values)
+    else:
+        future_q = 0
+    updated_value = (1-alpha) * current_value + alpha * (reward + gamma * future_q)
+
+    return updated_value
+
+def Update_Q_value_list(new_value, Q_values):
+    index = 0
+    for i in range(len(Q_values)):
+        if new_value[0] == Q_values[i][0] and new_value[1] == Q_values[i][1] and new_value[2] == Q_values[i][2]:
+            index = i
+            Q_values[i] = new_value
+            break
+
+    return index
+
+def Update_visit_count(position, Visits):
+    index = 0
+    for i in range(len(Visits)):
+        if Visits[i][0] == position:
+            Visits[i][1] += 1
+            index = i
+            break
+
+    return index
