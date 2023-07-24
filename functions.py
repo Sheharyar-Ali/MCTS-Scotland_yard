@@ -82,6 +82,13 @@ def Q_value_update(current_value, alpha, gamma, reward, list_values):
 
     return updated_value
 
+def get_Q_value(node, Q_values):
+    for q_value in Q_values:
+        if q_value[0] == node[0] and q_value[1] == node[1] and q_value[2] == node[2]:
+            value = q_value[3]
+    return value
+
+
 def Update_Q_value_list(new_value, Q_values):
     index = 0
     for i in range(len(Q_values)):
