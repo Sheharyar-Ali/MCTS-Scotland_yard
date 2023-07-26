@@ -1,4 +1,5 @@
 import numpy as np
+import itertools
 
 
 def weighted_selection(cat_1, cat_2, cat_3, p1, p2, p3):
@@ -73,38 +74,48 @@ def location_hider(Info, ticket, seekers):
 
     return location
 
-def Q_value_update(current_value, alpha, gamma, reward, list_values):
-    if len(list_values)!=0:
-        future_q = max(list_values)
-    else:
-        future_q = 0
-    updated_value = (1-alpha) * current_value + alpha * (reward + gamma * future_q)
 
-    return updated_value
+def Arrange_seekers(seeker_list, player):
+    """
+    Creates a list of locations for the seekers to move to during the reveal round. The locations are the three locations that are furthest from each seeker
+    :param seeker_list: list of seekers
+    :param player: Player entity
+    :return: list containing the list of locations to move to
+    """
+    seeker_positions = []
+    for seeker in seeker_list:
+        seeker_positions.append(seeker.position)
 
-def get_Q_value(node, Q_values):
-    for q_value in Q_values:
-        if q_value[0] == node[0] and q_value[1] == node[1] and q_value[2] == node[2]:
-            value = q_value[3]
-    return value
+    target_locations = []
+    for position in seeker_positions:
+        target_locations.append(player.maximise_distance(target=position)[0])
+
+    difference_combinations = []
+    for i in range(len(seeker_positions)):
+        position = seeker_positions[i]
+        buffer = []
+        seeker = seeker_list[i]
+        for location in target_locations:
+            if seeker.minimise_distance(destination=location, node_list=None)[0] != 0:
+                buffer.append(player.get_distance_difference(station_1=position, station_2=location))
+            else:
+                buffer.append(1000000)
+        difference_combinations.append(buffer)
+    difference_combinations=np.array(difference_combinations)
+
+    best_score = 1E24
+    best_combination = None
+    combos = itertools.permutations(range(len(target_locations)), len(seeker_list))
+
+    ## Use itertools to find the best combination that reduces the overall distance
+    for combo in combos:
+        if len(set(combo)) == len(seeker_list):
+            score = sum(difference_combinations[i][combo[i]] for i in range(len(seeker_list)))
+            if score < best_score:
+                best_score = score
+                best_combination = combo
 
 
-def Update_Q_value_list(new_value, Q_values):
-    index = 0
-    for i in range(len(Q_values)):
-        if new_value[0] == Q_values[i][0] and new_value[1] == Q_values[i][1] and new_value[2] == Q_values[i][2]:
-            index = i
-            Q_values[i] = new_value
-            break
+    chosen_targets = [target_locations[best_combination[0]],target_locations[best_combination[1]], target_locations[best_combination[2]]]
 
-    return index
-
-def Update_visit_count(position, Visits):
-    index = 0
-    for i in range(len(Visits)):
-        if Visits[i][0] == position:
-            Visits[i][1] += 1
-            index = i
-            break
-
-    return index
+    return chosen_targets
