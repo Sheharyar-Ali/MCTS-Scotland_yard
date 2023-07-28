@@ -3,6 +3,13 @@ import numpy as np
 from data_read import Info, Q_values, Visits
 from functions import *
 import copy
+from enum import Enum
+
+
+class Ticket(Enum):
+    Bus = 0
+    Underground = 1
+    Taxi = 2
 
 
 class Player:
@@ -56,19 +63,21 @@ class Player:
             return True
         return False
 
-    def move(self, destination, ticket):
+    def move(self, destination, ticket, print_warning=False):
         """
         Move to target location. Updates the connections of the entity
         :param destination: Target station
         :param ticket: Ticket used to get to target station
         :return: N/A
         """
-        if self.can_move(destination=destination, ticket=ticket):
+        if self.can_move(destination=destination, ticket=ticket, print_warning=print_warning):
             self.position = destination
             self.tickets[ticket] -= 1
             self.get_info()
             if self.position == "player":
                 print("Player moved to station: ", self.position)
+        elif print_warning:
+            print("Could not move entity")
 
     def get_station_info(self, station, Info=Info):
         """
@@ -116,11 +125,15 @@ class Player:
             generated_nodes.remove(node)
         return generated_nodes
 
-    def get_distance_difference(self, station_1, station_2):
+    def get_distance_difference(self, station_1, station_2, print_info=False):
         station_1_info = self.get_station_info(station=station_1)
         station_2_info = self.get_station_info(station=station_2)
         delta_x = abs(station_1_info[1][0] - station_2_info[1][0])
         delta_y = abs(station_1_info[1][1] - station_2_info[1][1])
+        if print_info:
+            print("stations", station_1, station_2)
+            print("info", station_1_info, station_2_info)
+            print("delats", delta_x, delta_y)
         difference = np.sqrt(delta_x ** 2 + delta_y ** 2)
         return difference
 
@@ -153,7 +166,6 @@ class Player:
             ticket_used = ticket_list[np.argmin(difference)]
 
         else:
-            print("No legal move for minimise distance function")
             chosen = 0
             ticket_used = 0
 
@@ -206,7 +218,10 @@ class Player:
         # C = 0.5
         # W = 5
         x_a = np.average(scores)
-        V = x_i + (C * np.sqrt(np.log(n_p) / n_i)) + (W * (x_a / (n_i * (1 - x_i) + 1)))
+        if n_i != 0:
+            V = x_i + (C * np.sqrt(np.log(n_p) / n_i)) + (W * (x_a / (n_i * (1 - x_i) + 1)))
+        else:
+            V = x_i + (W * (x_a / (n_i * (1 - x_i) + 1)))  # Prevents divison by 0 at the start of the game
 
         return V
 
@@ -218,18 +233,19 @@ class Player:
         :return: List containing the nodes in the format [[origin_1, destination_1, ticket_used_1], ..., [origin_i, destination_i, ticket_used_i]]
         """
         nodes = []
-        for i in range(len(station_list)):
-            station = station_list[i]
-            for j in range(len(Info)):
-                if Info[j][0] == station and Info[j][2] != [0]:
-                    for k in range(len(Info[j][2])):
-                        nodes.append([station, Info[j][2][k], 0])
-                if Info[j][0] == station and Info[j][3] != [0]:
-                    for k in range(len(Info[j][3])):
-                        nodes.append([station, Info[j][3][k], 1])
-                if Info[j][0] == station and Info[j][4] != [0]:
-                    for k in range(len(Info[j][4])):
-                        nodes.append([station, Info[j][4][k], 2])
+        tickets_available =[]
+        for i in range(len(self.tickets)):
+            ticket = self.tickets[i]
+            if ticket >0:
+                tickets_available.append(i)
+
+
+        for i in range(len(Info)):
+            station = Info[i]
+            for ticket in tickets_available:
+                if station[0] in station_list and station[ticket+2] != [0]:
+                    for entries in station[ticket+2]:
+                        nodes.append([station[0], entries, ticket])
 
         return nodes
 
@@ -308,29 +324,31 @@ class Player:
         else:
             return False
 
-    def generate_node_exclusion_list(self, station, node_list):
-        valid_nodes = self.generate_nodes(station_list=[station])
-        exclusion_list = []
-        for node in valid_nodes:
-            if node in node_list:
-                exclusion_list.append([node[1], node[2]])
-
-        return exclusion_list
-
     def distance_based_reward(self, player_location, reward_multiplier):
-        distance = self.get_distance_difference(station_1=self.position, station_2= player_location)
-        reward = reward_multiplier / distance # Higher rewards for lower distances
+        distance = self.get_distance_difference(station_1=self.position, station_2=player_location)
+        if distance != 0:
+            reward = reward_multiplier / distance  # Higher rewards for lower distances
+        else:
+            reward = 0
         return reward
 
-
-
-    def MCTS(self, N, last_ticket, seeker_list, player):
+    def MCTS(self, N, last_ticket, seeker_list, player, seekers, C, W, alpha, gamma):
         counter = 0
+        exclusion_list = []
+        for seeker in seekers:
+            if seeker.position not in exclusion_list:
+                exclusion_list.append(seeker.position)  # Make seeker unable to move to occupied stations
         nodes = self.generate_nodes(station_list=[self.position])  # List of nodes in the tree
+        for node in nodes:
+            if node[1] in exclusion_list:
+                nodes.remove(node) # Remove nodes that are already occupied by other seekers
+
         node_q_values = self.generate_node_scores(node_list=nodes,
                                                   Q_values=self.q_values)  # The q-values of all the nodes in the tree
         leaf_nodes = self.generate_nodes(station_list=[self.position])  # List of leaf nodes
-        exclusion_list = [int(nodes[0][0])]
+
+
+
         path_list_indexed, path_index, path_list = self.generate_path(node_list=nodes)
 
         error_counter = 0
@@ -349,7 +367,7 @@ class Player:
             ## Selection ##
 
             for node in leaf_nodes:
-                v_i = self.UCT(parent=node[0], child=node[1], transport=node[2], C=0.5, W=5, Q_values=self.q_values,
+                v_i = self.UCT(parent=node[0], child=node[1], transport=node[2], C=C, W=W, Q_values=self.q_values,
                                Visits=self.visits)
                 node_scores.append(v_i)
             chosen_node_index = np.argmax(np.array(node_scores))  # The index of the chosen node in leaf_nodes list
@@ -491,16 +509,33 @@ class Player:
 
         return Best_move
 
-    def MCTS_reveal_round(self, N, possible_location, player):
-        counter = 0
+    def MCTS_reveal_round(self, N, possible_location, player, seekers, C, W, alpha, gamma,reward_multiplier):
+        Best_move = 0
+        error_counter = 0
+        exclusion_list = []
+        for seeker in seekers:
+            if seeker.position not in exclusion_list:
+                exclusion_list.append(seeker.position)  # Make seeker unable to move to occupied stations
         nodes = self.generate_nodes(station_list=[self.position])  # List of nodes in the tree
+        for node in nodes:
+            if node[1] in exclusion_list:
+                nodes.remove(node) # Remove nodes that are already occupied by other seekers
+
         node_q_values = self.generate_node_scores(node_list=nodes,
                                                   Q_values=self.q_values)  # The q-values of all the nodes in the tree
         leaf_nodes = self.generate_nodes(station_list=[self.position])  # List of leaf nodes
-        exclusion_list = [int(nodes[0][0])]
+
         path_list_indexed, path_index, path_list = self.generate_path(node_list=nodes)
 
-        error_counter = 0
+        # Check if you can already reach the player
+        for node in nodes:
+            if node[1] == player.position:
+                Best_move = node
+        if Best_move == 0:
+            counter = 0
+        else:
+            counter = N + 10
+
         while counter < N:
             sim_running = True
             run_backprop = True
@@ -514,9 +549,8 @@ class Player:
             Dummy_player.get_info()
 
             ## Selection ##
-
             for node in leaf_nodes:
-                v_i = self.UCT(parent=node[0], child=node[1], transport=node[2], C=0.5, W=5, Q_values=self.q_values,
+                v_i = self.UCT(parent=node[0], child=node[1], transport=node[2], C=C, W=W, Q_values=self.q_values,
                                Visits=self.visits)
                 node_scores.append(v_i)
             chosen_node_index = np.argmax(np.array(node_scores))  # The index of the chosen node in leaf_nodes list
@@ -589,7 +623,7 @@ class Player:
 
             ## Backpropagation ##
             if run_backprop:
-                reward = self.distance_based_reward(player_location=Dummy_player.position, reward_multiplier=1)
+                reward = self.distance_based_reward(player_location=Dummy_player.position, reward_multiplier=reward_multiplier)
 
                 node_path_index = path_index[chosen_node_index_full]  # Find which of the paths this node gets added to
                 path_index.append(node_path_index)  # Add it to the list of indexes for each path
@@ -643,21 +677,23 @@ class Player:
                 # print("nodes" , nodes)
                 counter = N + 1
 
-        parent = self.position
-        values = []
-        values_index = []
-        for i in range(len(nodes)):
-            node = nodes[i]
-            if node[0] == parent:
-                values.append(self.get_Q_value(node=node, Q_values=self.q_values))
-                values_index.append(i)
-        values = np.array(values)
-        Best_index = values_index[np.argmax(values)]
-        Best_move = nodes[Best_index]
+        ## If you cant already reach the player, determine best move
+        if Best_move ==0:
+            parent = self.position
+            values = []
+            values_index = []
+            for i in range(len(nodes)):
+                node = nodes[i]
+                if node[0] == parent:
+                    values.append(self.get_Q_value(node=node, Q_values=self.q_values))
+                    values_index.append(i)
+            values = np.array(values)
+            Best_index = values_index[np.argmax(values)]
+            Best_move = nodes[Best_index]
 
         return Best_move
 
-    def RL_Backprop(self, move_made, reward_multiplier):
+    def RL_Backprop(self, move_made, reward_multiplier, alpha, gamma):
         new_coverage = self.get_coverage(visit_count=self.visits)
         reward = reward_multiplier * (new_coverage - self.coverage)
         nodes = self.generate_nodes(station_list=[self.position])
@@ -667,16 +703,3 @@ class Player:
                                             list_values=future_q_values)
         new_identity = [move_made[0], move_made[1], move_made[2], updated_value]
         self.Update_Q_value_list(new_value=new_identity, Q_values=self.q_values)
-
-
-alpha = 0.1  # "A study on automatic playing of Scotland Yard with RL and MCTS" (2018) by Cheng Qi and Chunyan Miao.
-gamma = 0.9  # "A study on automatic playing of Scotland Yard with RL and MCTS" (2018) by Cheng Qi and Chunyan Miao.
-X = Player("player", 189, [4, 8, 10])
-S1 = Player("seeker", 120, [4, 8, 10])
-S2 = Player("seeker", 121, [4, 8, 10])
-S3 = Player("seeker", 193, [4, 8, 10])
-Seekers = [S1, S2, S3]
-# print(S1.MCTS(N=1000, last_ticket=2, seeker_list=[S1, S2, S3], player=X))
-data = Arrange_seekers(seeker_list=Seekers, player= X)
-print(S1.MCTS_reveal_round(N=100,possible_location=data[0], player=X))
-print(data)
