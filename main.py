@@ -1,34 +1,42 @@
 from classes import *
-
+from graphics import *
 ## Initialise ##
 
 running = True
 Round = 1
 Round_limit = 24
-Reveal_Rounds = [3, 8, 13, 18, 24] # [3, 6, 9, 12]
+Reveal_Rounds = [3, 8, 13, 18, 24]  # [3, 6, 9, 12]
+Possible_locations_list = None  # Updated during reveal rounds
+immobile_seeker = None
+immobile_seeker_locations =[]
 start_locations = randomise_start_locations(Info=Info, number_seekers=4)
 
-X = Player("player", start_locations[0], [3, 3, 4])
-S1 = Player("seeker", start_locations[1], [8, 4, 10])
-S2 = Player("seeker", start_locations[2], [8, 4, 10])
-S3 = Player("seeker", start_locations[3], [8, 4, 10])
-S4 = Player("seeker", start_locations[4], [8, 4, 10])
+X = Player("player", start_locations[0], [1, 1, 4])
+S1 = Player("seeker", start_locations[1], [8, 4, 20])
+S2 = Player("seeker", start_locations[2], [8, 4, 20])
+S3 = Player("seeker", start_locations[3], [8, 4, 20])
+S4 = Player("seeker", start_locations[4], [8, 4, 20])
+
 Seekers = [S1, S2, S3, S4]
 
-normal_reward_multiplier = 10 # The reward multiplier for normal rounds
-reveal_reward_multipler_MCTS = 1 # The reward multiplier used in the backpropagation of the MCTS in the reveal round
-reveal_reward_multiplier_Rl = 1 # The reward multiplier used in the backpropagation of the RL in the reveal round
+normal_reward_multiplier = 1  # The reward multiplier for normal rounds
+reveal_reward_multipler_MCTS = 1  # The reward multiplier used in the backpropagation of the MCTS in the reveal round
+reveal_reward_multiplier_Rl = 1  # The reward multiplier used in the backpropagation of the RL in the reveal round
 alpha_normal = 0.1  # "A study on automatic playing of Scotland Yard with RL and MCTS" (2018) by Cheng Qi and Chunyan Miao.
 gamma_normal = 0.9  # "A study on automatic playing of Scotland Yard with RL and MCTS" (2018) by Cheng Qi and Chunyan Miao.
 alpha_reveal = 0.1  # alpha for reveal rounds
 gamma_reveal = 0.9  # gamma for reveal rounds
 C_normal = 0.6
 W_normal = 50
-C_reveal = 0.1 # More exploitation and less exploration
+C_reveal = 0.1  # More exploitation and less exploration
 W_reveal = 50
 
-print("Seeker starting locations: Seeker 1: ", S1.position, "Seeker 2:", S2.position, "Seeker 3:", S3.position, "Seeker 4: ", S4.position)
+print("Seeker starting locations: Seeker 1: ", S1.position, "Seeker 2:", S2.position, "Seeker 3:", S3.position,
+      "Seeker 4: ", S4.position)
+
+Draw_positions(player=X, seekers=Seekers, immobile_seeker_locations=immobile_seeker_locations)
 while running:
+    pg.display.flip()
     ## Player's turn ##
     print("Round", Round, "out of ", Round_limit)
     if Round in Reveal_Rounds:
@@ -49,42 +57,73 @@ while running:
     ## Seekers' turn ##
     if Round not in Reveal_Rounds:
         ticket_used = move[2]
+        Possible_locations_list = update_possible_location_list(possible_locations=Possible_locations_list, Info=Info,
+                                                                seekers=Seekers,
+                                                                ticket=ticket_used)
+        X.update_loc_cat(player=X,location_list=Possible_locations_list)
+
         for i in range(len(Seekers)):
             seeker = Seekers[i]
             if sum(np.array(seeker.tickets)) > 0:
-                seeker_move = seeker.MCTS(N=1000, last_ticket=ticket_used, seeker_list=Seekers, player=X, seekers=Seekers, C=C_normal, W=W_normal, alpha=alpha_normal, gamma=gamma_normal)
-                seeker.move(destination=seeker_move[1], ticket=seeker_move[2], print_warning=True)
-                print("Seeker", i + 1, "moved to", seeker.position, "using ", Ticket(seeker_move[2]).name, seeker.tickets)
-                X.tickets[seeker_move[2]] += 1
-                if seeker.caught(other_player=X):
-                    running = False
-                    print("Seeker", i + 1, "has caught Mr X!!!")
-                seeker.RL_Backprop(move_made=seeker_move, reward_multiplier=normal_reward_multiplier, alpha=alpha_normal, gamma=gamma_normal)
+                seeker_move = seeker.MCTS(N=1000, player=X,
+                                          seekers=Seekers, C=C_normal, W=W_normal, alpha=alpha_normal,
+                                          gamma=gamma_normal, possible_locations=Possible_locations_list)
+                if seeker_move != [0, 0, 0]:
+                    seeker.move(destination=seeker_move[1], ticket=seeker_move[2], print_warning=True)
+                    print("Seeker", i + 1, "moved to", seeker.position, "using ", Ticket(seeker_move[2]).name,
+                          seeker.tickets)
+                    X.tickets[seeker_move[2]] += 1
+                    if seeker.caught(other_player=X):
+                        running = False
+                        print("Seeker", i + 1, "has caught Mr X!!!")
+                    seeker.RL_Backprop(move_made=seeker_move, reward_multiplier=normal_reward_multiplier,
+                                       alpha=alpha_normal, gamma=gamma_normal)
+                else:
+                    immobile_seeker = seeker
+                    if seeker.position not in immobile_seeker_locations:
+                        immobile_seeker_locations.append(seeker.position)
             else:
-                print("Seeker ", i+1, "out of tickets. Position is ", seeker.position)
+                print("Seeker ", i + 1, "out of tickets. Position is ", seeker.position)
 
     else:
+        Possible_locations_list = [X.position]
         print("Reveal round so seekers know your current location")
         ticket_used = move[2]
-        possible_locations = Arrange_seekers(seeker_list=Seekers,player=X)
+        possible_locations_arranged = Arrange_seekers(seeker_list=Seekers, player=X)
         for i in range(len(Seekers)):
             seeker = Seekers[i]
             if sum(np.array(seeker.tickets)) > 0:
-                seeker_move = seeker.MCTS_reveal_round(N=1000, possible_location=possible_locations[i], player=X, seekers=Seekers, C=C_reveal, W=W_reveal, alpha=alpha_reveal, gamma=gamma_reveal,reward_multiplier=reveal_reward_multipler_MCTS)
-                seeker.move(destination=seeker_move[1], ticket=seeker_move[2], print_warning=True)
-                print("Seeker", i + 1, "moved to", seeker.position, "using ", Ticket(seeker_move[2]).name)
-                X.tickets[seeker_move[2]] += 1
-                if seeker.caught(other_player=X):
-                    running = False
-                    print("Seeker", i + 1, "has caught Mr X!!!")
-                seeker.RL_Backprop(move_made=seeker_move, reward_multiplier=reveal_reward_multiplier_Rl, alpha=alpha_normal, gamma=gamma_normal)
+                seeker_move = seeker.MCTS_reveal_round(N=1000, possible_location=possible_locations_arranged[i],
+                                                       player=X,
+                                                       seekers=Seekers, C=C_reveal, W=W_reveal, alpha=alpha_reveal,
+                                                       gamma=gamma_reveal,
+                                                       reward_multiplier=reveal_reward_multipler_MCTS)
+                if seeker_move != [0, 0, 0]:  # If seeker is able to move
+                    seeker.move(destination=seeker_move[1], ticket=seeker_move[2], print_warning=True)
+                    print("Seeker", i + 1, "moved to", seeker.position, "using ", Ticket(seeker_move[2]).name)
+                    X.tickets[seeker_move[2]] += 1
+                    if seeker.caught(other_player=X) or X.position in immobile_seeker_locations:
+                        running = False
+                        print("Seeker", i + 1, "has caught Mr X!!!")
+                    seeker.RL_Backprop(move_made=seeker_move, reward_multiplier=reveal_reward_multiplier_Rl,
+                                       alpha=alpha_normal, gamma=gamma_normal)
             else:
-                print("Seeker ", i+1, "out of tickets. Position is ", seeker.position)
+                print("Seeker ", i + 1, "out of tickets. Position is ", seeker.position)
 
     Round += 1
+    if immobile_seeker is not None:
+        Seekers.remove(immobile_seeker)
+        immobile_seeker = None
+        print("Immobile Seeker removed")
+
     print("#########")
+    Draw_positions(player=X, seekers=Seekers, immobile_seeker_locations=immobile_seeker_locations)
+
     if Round > Round_limit:
         running = False
+
+print(loc_cat)
+write_loc_cat_file("Location_categorisation.csv")
 for seeker in Seekers:
     seeker.get_coverage(visit_count=seeker.visits)
     print(seeker.coverage)

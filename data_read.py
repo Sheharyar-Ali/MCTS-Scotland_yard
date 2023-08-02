@@ -1,12 +1,13 @@
 import pandas as pd
 import numpy as np
 
-file = open("Map_info.csv")
+file = open("Map_info_V2.csv")
 lines = file.readlines()
 fixed = pd.DataFrame({})
 Info =[]
 Q_values =[]
 Visits=[]
+loc_cat = []
 for line in lines:
     buffer = []
     line=line[:-1]
@@ -47,6 +48,16 @@ for data in Info:
         if data[i] != [0]:
             for j in range(len(data[i])):
                 Q_values.append([current_station, data[i][j], i-2, 0])
+
+file.close()
+
+Loc_file = open("Location_categorisation.csv")
+lines = Loc_file.readlines()
+for line in lines:
+    line = line[:-1]
+    line = line.split(",")
+    if line[0] != "a":
+        loc_cat.append([int(line[0]), int(line[1])])
 
 
 

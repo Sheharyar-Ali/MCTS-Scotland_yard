@@ -1,6 +1,8 @@
+import csv
+
 import numpy as np
 import itertools
-
+from data_read import loc_cat
 # np.random.seed(1)
 
 
@@ -30,10 +32,12 @@ def weighted_selection(categories, probabilities):
     station = chosen_category[random_station]
 
 
+
+
     return station
 
 
-def location_hider(Info, ticket, seekers):
+def location_hider(player,possible_locations):
     """
     Compiles a list of all possible locations that the player can be on. These are split into 3 categories and a
     weighted selection is performed to determine one station where the player can be.
@@ -42,38 +46,63 @@ def location_hider(Info, ticket, seekers):
     :param seekers: List of seekers
     :return: Possible location of Player
     """
-    loc_seekers = []
+    # loc_seekers = []
+    # for i in range(len(seekers)):
+    #     loc_seekers.append(seekers[i].position)
+    #
+    #  # If location is known then search through only the locations connected to the known location
+    # if known_location is None:
+    #     Info_list = Info
+    # else:
+    #     locations = seekers[0].generate_nodes([known_location])
+    #     station_info = []
+    #     for loc in locations:
+    #         if loc[2] == ticket:
+    #             station_info.append(seekers[0].get_station_info(loc[1]))
+    #     Info_list = station_info
+    #
+    #
+    # for i in range(len(Info)):
+    #     station = Info[i][0]
+    #     bus_con = Info[i][2]
+    #     underground_con = Info[i][3]
+    #     taxi_con = Info[i][4]
+    #     con = [bus_con, underground_con, taxi_con]
+    #     check = False
+    #     if station not in loc_seekers:
+    #         for j in range(len(Info_list)):
+    #             target = Info_list[j][0]
+    #             bus_con_target = Info_list[j][2]
+    #             underground_con_target = Info_list[j][3]
+    #             if (bus_con_target != [0]) and (underground_con_target == [0]):
+    #                 possible_locations = cat_2
+    #             elif underground_con_target != [0]:
+    #                 possible_locations = cat_3
+    #             else:
+    #                 possible_locations = cat_1
+    #             # if (target in bus_con and ticket == 0) or (target in underground_con and ticket == 1) or (
+    #             #         target in taxi_con and ticket == 2):
+    #             if target in con[ticket]:
+    #                 check = True
+    #             if check and target not in possible_locations and target not in loc_seekers:
+    #                 possible_locations.append(target)
     cat_1 = []  # Only taxis
     cat_2 = []  # bus + taxi
     cat_3 = []  # underground + taxi + bus
-    for i in range(len(seekers)):
-        loc_seekers.append(seekers[i].position)
-    for i in range(len(Info)):
-        station = Info[i][0]
-        bus_con = Info[i][2]
-        underground_con = Info[i][3]
-        taxi_con = Info[i][4]
-        check = False
-        if station not in loc_seekers:
-            for j in range(len(Info)):
-                target = Info[j][0]
-                bus_con_target = Info[j][2]
-                underground_con_target = Info[j][3]
-                if (bus_con_target != [0]) and (underground_con_target == [0]):
-                    possible_locations = cat_2
-                elif underground_con_target != [0]:
-                    possible_locations = cat_3
-                else:
-                    possible_locations = cat_1
-                if (target in bus_con and ticket == 0) or (target in underground_con and ticket == 1) or (
-                        target in taxi_con and ticket == 2):
-                    check = True
-                if check and target not in possible_locations and target not in loc_seekers:
-                    possible_locations.append(target)
-    categories = [cat_1,cat_2,cat_3]
-    probabilites = [0.3,0.3,0.4]
-    location = weighted_selection(categories=categories, probabilities=probabilites)
+    for location in possible_locations:
+        station_info = player.get_station_info(station=location)
+        bus_con = station_info[2]
+        underground_con = station_info[3]
+        if underground_con != [0]:
+            cat_3.append(location)
+        elif bus_con != [0]:
+            cat_2.append(location)
+        else:
+            cat_1.append(location)
 
+    categories = [cat_1,cat_2,cat_3]
+    probabilities = [0.3,0.3,0.4]
+    location = weighted_selection(categories=categories, probabilities=probabilities)
     return location
 
 
@@ -100,9 +129,13 @@ def Arrange_seekers(seeker_list, player):
 
     for station in station_list: # Rank them based on the category
         station_info = player.get_station_info(station=station)
-        for i in range(3):
-            if station_info[i+2] !=[0]:
-                categories[i].append(station)
+        if station_info[4] != [0]:
+            categories[2].append(station)
+        elif station_info[3] != [0]:
+            categories[1].append(station)
+        else:
+            categories[0].append(station)
+
 
      # If you have more connections than seekers
     if len(station_list) > len(seeker_list):
@@ -169,5 +202,59 @@ def randomise_start_locations(Info, number_seekers):
     # start_locations = [Info[start_index[0]][0],Info[start_index[1]][0], Info[start_index[2]][0], Info[start_index[3]][0] ]
     return start_locations
 
+def write_loc_cat_file(file_name,loc_cat=loc_cat):
+    file = open(file_name, "w",newline="")
+    data = [{"a": loc_cat[0][0], "n": loc_cat[0][1]},
+            {"a": loc_cat[1][0], "n": loc_cat[1][1]},
+            {"a": loc_cat[2][0], "n": loc_cat[2][1]}]
+    header = ["a", "n"]
+    writer = csv.DictWriter(file,fieldnames=header)
+    writer.writeheader()
+    writer.writerows(data)
 
+    return 0
+
+
+
+def update_possible_location_list(possible_locations, Info, seekers, ticket):
+    loc_seekers = []
+    for seeker in seekers:
+        loc_seekers.append(seeker.position)
+
+
+    if possible_locations is None:
+        ## Find every station reachable using the provided ticket ##
+        possible_locations = []
+        Info_list = Info
+        for i in range(len(Info)):
+            station = Info[i][0]
+            bus_con = Info[i][2]
+            underground_con = Info[i][3]
+            taxi_con = Info[i][4]
+            con = [bus_con, underground_con, taxi_con]
+            check = False
+            if station not in loc_seekers:
+                for j in range(len(Info_list)):
+                    target = Info_list[j][0]
+                    if target in con[ticket]:
+                        check = True
+                    if check and target not in possible_locations and target not in loc_seekers:
+                        possible_locations.append(target)
+    else:
+        original_length = len(possible_locations)
+
+        for i in range(0,original_length):
+            station = possible_locations[i]
+            nodes = seekers[0].generate_nodes([station])
+            for node in nodes:
+                if node[1] not in possible_locations and node[2] == ticket:
+                    possible_locations.append(node[1])
+
+
+
+    for station in loc_seekers:
+        if station in possible_locations:
+            possible_locations.remove(station)
+
+    return possible_locations
 

@@ -3,21 +3,26 @@ import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 
-pg.init()
-pg.font.init()
-window = (1500, 671)
-res = (2500, 1000)
-map = pg.image.load("map.png")
-background = pg.transform.scale(map, window)
-screen = pg.display.set_mode(window)
-running = True
-screen.fill((0, 0, 0))
-screen.blit(background, [0, 0])
+def Draw_positions(player, seekers, immobile_seeker_locations):
+    pg.init()
+    pg.font.init()
+    window = (1500, 671)
+    map = pg.image.load("map.png")
+    background = pg.transform.scale(map, window)
+    screen = pg.display.set_mode(window)
+    screen.fill((0, 0, 0))
+    player_station_info = player.get_station_info(station=player.position)
+    pg.draw.circle(background, (0, 255, 0), player_station_info[1], 13, 5)
+    for seeker in seekers:
+        seeker_station_info = seeker.get_station_info(seeker.position)
+        pg.draw.circle(background, (255, 0, 0), seeker_station_info[1], 13, 5)
+    if len(immobile_seeker_locations) > 0:
+        for location in immobile_seeker_locations:
+            location_info = player.get_station_info(location)
+            pg.draw.circle(background, (255, 0, 0), location_info[1], 13, 5)
+    screen.blit(background, [0, 0])
+    pg.display.flip()
 
-
-# 33,246
-# (+15, +13)
-#
 
 
 def find_red_circles(image_path):
@@ -59,25 +64,20 @@ def find_red_circles(image_path):
     return red_circle_positions
 
 
-image_path = "locations.png"
+#
+#
+# image_path = "locations.png"
+#
+# red_circle_positions = find_red_circles(image_path)
+#
+# print("Positions of  Circles:")
+# for i, pos in enumerate(red_circle_positions):
+#     print(f"Circle {i}: (x={pos[0]}, y={pos[1]})")
+#
+#     # Display the image with circles plotted at the detected positions
+# image_rgb = cv2.cvtColor(cv2.imread(image_path), cv2.COLOR_BGR2RGB)
+# for pos in red_circle_positions:
+#     cv2.circle(image_rgb, (pos[0], pos[1]), radius=5, color=(0, 255, 0), thickness=-1)
+# i = 97
 
-red_circle_positions = find_red_circles(image_path)
 
-print("Positions of  Circles:")
-for i, pos in enumerate(red_circle_positions):
-    print(f"Circle {i}: (x={pos[0]}, y={pos[1]})")
-
-    # Display the image with circles plotted at the detected positions
-image_rgb = cv2.cvtColor(cv2.imread(image_path), cv2.COLOR_BGR2RGB)
-for pos in red_circle_positions:
-    cv2.circle(image_rgb, (pos[0], pos[1]), radius=5, color=(0, 255, 0), thickness=-1)
-i = 97
-
-
-pos_x = red_circle_positions[i][0] + -1
-pos_y = red_circle_positions[i][1] + 2
-pg.draw.circle(background, (255, 0, 0), (pos_x, pos_y), 13, 2)
-# pg.draw.circle(background, (255, 0, 0), (1340, 379), 13, 2)
-screen.blit(background, [0, 0])
-pg.display.flip()
-print(pos_x,pos_y )
