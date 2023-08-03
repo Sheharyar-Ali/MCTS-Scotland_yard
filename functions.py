@@ -37,7 +37,7 @@ def weighted_selection(categories, probabilities):
     return station
 
 
-def location_hider(player,possible_locations):
+def location_hider(player,possible_locations,loc_cat=loc_cat):
     """
     Compiles a list of all possible locations that the player can be on. These are split into 3 categories and a
     weighted selection is performed to determine one station where the player can be.
@@ -46,46 +46,6 @@ def location_hider(player,possible_locations):
     :param seekers: List of seekers
     :return: Possible location of Player
     """
-    # loc_seekers = []
-    # for i in range(len(seekers)):
-    #     loc_seekers.append(seekers[i].position)
-    #
-    #  # If location is known then search through only the locations connected to the known location
-    # if known_location is None:
-    #     Info_list = Info
-    # else:
-    #     locations = seekers[0].generate_nodes([known_location])
-    #     station_info = []
-    #     for loc in locations:
-    #         if loc[2] == ticket:
-    #             station_info.append(seekers[0].get_station_info(loc[1]))
-    #     Info_list = station_info
-    #
-    #
-    # for i in range(len(Info)):
-    #     station = Info[i][0]
-    #     bus_con = Info[i][2]
-    #     underground_con = Info[i][3]
-    #     taxi_con = Info[i][4]
-    #     con = [bus_con, underground_con, taxi_con]
-    #     check = False
-    #     if station not in loc_seekers:
-    #         for j in range(len(Info_list)):
-    #             target = Info_list[j][0]
-    #             bus_con_target = Info_list[j][2]
-    #             underground_con_target = Info_list[j][3]
-    #             if (bus_con_target != [0]) and (underground_con_target == [0]):
-    #                 possible_locations = cat_2
-    #             elif underground_con_target != [0]:
-    #                 possible_locations = cat_3
-    #             else:
-    #                 possible_locations = cat_1
-    #             # if (target in bus_con and ticket == 0) or (target in underground_con and ticket == 1) or (
-    #             #         target in taxi_con and ticket == 2):
-    #             if target in con[ticket]:
-    #                 check = True
-    #             if check and target not in possible_locations and target not in loc_seekers:
-    #                 possible_locations.append(target)
     cat_1 = []  # Only taxis
     cat_2 = []  # bus + taxi
     cat_3 = []  # underground + taxi + bus
@@ -101,7 +61,7 @@ def location_hider(player,possible_locations):
             cat_1.append(location)
 
     categories = [cat_1,cat_2,cat_3]
-    probabilities = [0.3,0.3,0.4]
+    probabilities = [loc_cat[0][0] / loc_cat[0][1], loc_cat[1][0] / loc_cat[1][1], loc_cat[2][0] / loc_cat[2][1]]
     location = weighted_selection(categories=categories, probabilities=probabilities)
     return location
 
@@ -241,20 +201,20 @@ def update_possible_location_list(possible_locations, Info, seekers, ticket):
                     if check and target not in possible_locations and target not in loc_seekers:
                         possible_locations.append(target)
     else:
-        original_length = len(possible_locations)
-
-        for i in range(0,original_length):
+        print("Possible locations at the start: ", possible_locations)
+        new_list = []
+        for i in range(0,len(possible_locations)):
             station = possible_locations[i]
             nodes = seekers[0].generate_nodes([station])
             for node in nodes:
-                if node[1] not in possible_locations and node[2] == ticket:
-                    possible_locations.append(node[1])
+                if node[1] not in new_list and node[2] == ticket and node[1] not in loc_seekers:
+                    new_list.append(node[1])
 
-
+        possible_locations = new_list
 
     for station in loc_seekers:
         if station in possible_locations:
             possible_locations.remove(station)
-
+    print("possible locations at the end:", possible_locations)
     return possible_locations
 

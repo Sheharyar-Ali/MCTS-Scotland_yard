@@ -21,10 +21,13 @@ class Player:
         self.position = position  # int
         self.tickets = tickets  # [bus,underground,taxi] (int)
         self.get_info()
-        if self.role == "seeker":
-            self.visits = copy.deepcopy(Visits)
-            self.q_values = copy.deepcopy(Q_values)
-            self.coverage = 0
+
+        # These are useful only for the seekers
+        self.visits = copy.deepcopy(Visits)
+        self.real_visits = copy.deepcopy(Visits)
+        self.q_values = copy.deepcopy(Q_values)
+        self.coverage = 0
+        self.real_coverage = 0
 
     def get_info(self, Info=Info):
         for i in range(len(Info)):
@@ -73,6 +76,7 @@ class Player:
             self.position = destination
             self.tickets[ticket] -= 1
             self.get_info()
+            self.Update_visit_count(position=destination, Visits=self.real_visits)
             if self.position == "player":
                 print("Player moved to station: ", self.position)
         elif print_warning:
@@ -114,14 +118,30 @@ class Player:
         else:
             loc_cat[0][0] += 1
 
-    def get_coverage(self, visit_count):
+    def get_coverage(self):
         """
-        Get the percentage of stations that have been visited at least once by a seeker
-        :param visit_count: list of the visit counts of each station for this seeker
+        Get the percentage of stations that have been visited at least once by the seeker during the MCTS simulation
         :return: percentage explored
         """
         unexplored = 0
         explored = 0
+        visit_count = self.visits
+        for visit in visit_count:
+            if visit[1] == 0:
+                unexplored += 1
+            else:
+                explored += 1
+        total_explored = explored / (unexplored + explored)
+        return total_explored
+
+    def get_real_coverage(self):
+        """
+        Get the percentage of stations that have been visited at least once by the seeker during the MCTS simulation
+        :return: percentage explored
+        """
+        unexplored = 0
+        explored = 0
+        visit_count = self.real_visits
         for visit in visit_count:
             if visit[1] == 0:
                 unexplored += 1
@@ -150,12 +170,13 @@ class Player:
     def get_distance_difference(self, station_1, station_2, print_info=False):
         station_1_info = self.get_station_info(station=station_1)
         station_2_info = self.get_station_info(station=station_2)
-        delta_x = abs(station_1_info[1][0] - station_2_info[1][0])
-        delta_y = abs(station_1_info[1][1] - station_2_info[1][1])
         if print_info:
             print("stations", station_1, station_2)
             print("info", station_1_info, station_2_info)
-            print("delats", delta_x, delta_y)
+            # print("delats", delta_x, delta_y)
+        delta_x = abs(station_1_info[1][0] - station_2_info[1][0])
+        delta_y = abs(station_1_info[1][1] - station_2_info[1][1])
+
         difference = np.sqrt(delta_x ** 2 + delta_y ** 2)
         return difference
 
@@ -351,8 +372,9 @@ class Player:
             reward = 0
         return reward
 
-    def MCTS(self, N, player, seekers, C, W, alpha, gamma, possible_locations):
+    def MCTS(self, N, player, seekers, C, W, alpha, gamma, possible_locations, Round, Total_Rounds):
         counter = 0
+        node_to_remove = 0
         exclusion_list = []
         for seeker in seekers:
             if seeker.position not in exclusion_list:
@@ -369,7 +391,7 @@ class Player:
         path_list_indexed, path_index, path_list = self.generate_path(node_list=nodes)
 
         error_counter = 0
-
+        self.coverage = self.get_coverage()
         if len(leaf_nodes) == 0:
             counter = N + 10
             Best_move = [0, 0, 0]
@@ -377,9 +399,10 @@ class Player:
             Best_move = 0
 
         while counter < N:
-            sim_running = True
+            reward = 0
+            run_sim = True
             run_backprop = True
-            self.coverage = self.get_coverage(visit_count=self.visits)
+            run_expansion = True
 
             ## Initialise ##
             node_scores = []  # The scores of all the leaf nodes in the tree (For Selection)
@@ -387,6 +410,7 @@ class Player:
             Dummy_player = copy.deepcopy(player)  # Create a Dummy player to use for the simulation
             Dummy_player.position = possible_location
             Dummy_player.get_info()
+            Dummy_Round = Round
 
             ## Selection ##
 
@@ -396,55 +420,78 @@ class Player:
                 node_scores.append(v_i)
             chosen_node_index = np.argmax(np.array(node_scores))  # The index of the chosen node in leaf_nodes list
             chosen_node = leaf_nodes[chosen_node_index]
-            chosen_node_index_full = 0  # The index of the chosen node in the nodes list
+            chosen_node_index_full = 0  # The index of the chosen node in the full nodes list
             for i in range(len(nodes)):
                 node = nodes[i]
                 if chosen_node == node:
                     chosen_node_index_full = i
+
+            # Get the particular path of this node in the tree
+            node_path_index = path_index[
+                chosen_node_index_full]  # Find which of the paths this node gets added to
+            node_path = path_list_indexed[
+                node_path_index]  # get the list of indexes of the nodes in the appropriate path
 
             Dummy_seeker = copy.deepcopy(self)  # Create a dummy seeker to use for the simulation
             Dummy_seeker.position = chosen_node[1]
             Dummy_seeker.get_info()
             exclusion_list.append(chosen_node[0])  # Add the origin to the list
 
+            # If this node already has the player's target location, no need to expand
+            if Dummy_seeker.caught(other_player=Dummy_player):
+                run_sim = False
+                run_expansion = False
+                reward += 1
+                node_to_remove = chosen_node # Remove this node at the end of this iteration from leaf node
+
             ## Expansion ##
-            # print("leaf", leaf_nodes)
-            # print("nodes", nodes)
-            # print("Selected node:", chosen_node, Dummy_seeker.position)
-            expanded_node, ticket_used = Dummy_seeker.minimise_distance(destination=possible_location,
-                                                                        exclude_stations=exclusion_list,
-                                                                        node_list=nodes)
+            if run_expansion:
+                # print("leaf", leaf_nodes)
+                # print("nodes", nodes)
+                # print("Selected node:", chosen_node, Dummy_seeker.position)
+                expanded_node, ticket_used = Dummy_seeker.minimise_distance(destination=possible_location,
+                                                                            exclude_stations=exclusion_list,
+                                                                            node_list=nodes)
 
-            new_node = [chosen_node[1], expanded_node, ticket_used]
-            # print("trying to add:", new_node)
+                new_node = [chosen_node[1], expanded_node, ticket_used]
+                # print("trying to add:", new_node)
 
-            if expanded_node == 0:
-                new_node = nodes[-1]
+                if expanded_node == 0:
+                    new_node = nodes[-1]
 
-            # print("exclusion list", exclusion_list)
-            if new_node not in nodes:
-                new_node_q_value = self.generate_node_scores(node_list=[new_node], Q_values=self.q_values)[0]
-                nodes.append(new_node)  # Add to the tree
-                leaf_nodes.append(new_node)  # Add to list of leaf nodes
-                node_q_values.append(new_node_q_value)
-                leaf_nodes.pop(chosen_node_index)  # Remove from leaf node so the UCT can not run on the parent node
-                check_full_connections = self.all_full_connections(station=new_node[0],
-                                                                   node_list=nodes)  # See if this node has any more connections left to explore
-                if check_full_connections:
-                    exclusion_list.append(new_node[0])
-                # print("node added", new_node)
-                error_counter = 0
+                # print("exclusion list", exclusion_list)
+                if new_node not in nodes:
+                    new_node_q_value = self.generate_node_scores(node_list=[new_node], Q_values=self.q_values)[0]
+                    nodes.append(new_node)  # Add to the tree
+                    leaf_nodes.append(new_node)  # Add to list of leaf nodes
+                    node_q_values.append(new_node_q_value)
+                    leaf_nodes.pop(chosen_node_index)  # Remove from leaf node so the UCT can not run on the parent node
+                    check_full_connections = self.all_full_connections(station=new_node[0],
+                                                                       node_list=nodes)  # See if this node has any more connections left to explore
+                    if check_full_connections:
+                        exclusion_list.append(new_node[0])
+                    # print("node added", new_node)
+                    error_counter = 0
 
-            else:
-                sim_running = False
-                # print("No unique nodes can be added")
-                run_backprop = False
-                error_counter += 1
+                    # Move dummy seeker to new position
+                    Dummy_seeker.move(destination=expanded_node, ticket=ticket_used)
+
+                    ## Update the list of paths ##
+                    path_index.append(node_path_index)  # Add it to the list of indexes for each path
+                    node_path.append(chosen_node_index_full)  # Add to the list of indexes
+                    path_list_indexed[node_path_index] = node_path
+                    path_list[node_path_index].append(new_node[1])  # Add the node id to the list of the path
+
+                else:
+                    run_sim = False
+                    # print("No unique nodes can be added")
+                    run_backprop = False
+                    error_counter += 1
 
             ## Simulation ##
 
-            Dummy_seeker.move(destination=expanded_node, ticket=ticket_used)
-            while sim_running:
+
+            while run_sim:
                 player_target, player_ticket = Dummy_player.maximise_distance(Dummy_seeker.position)
                 if player_target != 0:
                     Dummy_player.move(destination=player_target, ticket=player_ticket)
@@ -453,10 +500,12 @@ class Player:
                 if dummy_target != 0:
                     Dummy_seeker.move(destination=dummy_target, ticket=dummy_ticket)
                     Dummy_player.tickets[dummy_ticket] += 1
+                    Dummy_Round += 1
                 else:
-                    sim_running = False
-                if Dummy_player.caught(Dummy_seeker) or np.sum(np.array(Dummy_seeker.tickets)) == 0:
-                    sim_running = False
+                    run_sim = False
+                if Dummy_player.caught(Dummy_seeker) or np.sum(
+                        np.array(Dummy_seeker.tickets)) == 0 or Dummy_Round > Total_Rounds:
+                    run_sim = False
                     # if Dummy_player.caught(Dummy_seeker):
                     #     print("SIM ENDED BECAUSE MR X CAUGHT")
             # print("Simulation done")
@@ -464,17 +513,23 @@ class Player:
 
             ## Backpropagation ##
             if run_backprop:
+                for i in range(len(node_path)):
+                    index = node_path[i]
+                    if i == 0:
+
+                        check_2 = self.Update_visit_count(position=nodes[index][0], Visits=self.visits)
+
+                        check_3 = self.Update_visit_count(position=nodes[index][1], Visits=self.visits)
+                    else:
+                        check_2 = self.Update_visit_count(position=nodes[index][0], Visits=self.visits)
+
+                Dummy_coverage = Dummy_seeker.get_coverage()
+                reward += 1 * abs(Dummy_coverage - self.coverage)  # Get how many more nodes have been explored
+
                 if Dummy_player.caught(Dummy_seeker):
-                    reward = 1
+                    reward += 1
                 else:
-                    reward = -1
-                node_path_index = path_index[chosen_node_index_full]  # Find which of the paths this node gets added to
-                path_index.append(node_path_index)  # Add it to the list of indexes for each path
-                node_path = path_list_indexed[
-                    node_path_index]  # get the list of indexes of the nodes in the appropriate path
-                node_path.append(chosen_node_index_full)  # Add to the list of indexes
-                path_list_indexed[node_path_index] = node_path
-                path_list[node_path_index].append(new_node[1])  # Add the node id to the list of the path
+                    reward -= 1
 
                 for i in range(len(node_path)):
                     index = node_path[i]
@@ -487,23 +542,16 @@ class Player:
                     new_identity = [nodes[index][0], nodes[index][1], nodes[index][2], updated_value]
                     check = self.Update_Q_value_list(new_value=new_identity, Q_values=self.q_values)
 
-                    if i == 0:
-
-                        check_2 = self.Update_visit_count(position=nodes[index][0], Visits=self.visits)
-
-                        check_3 = self.Update_visit_count(position=nodes[index][1], Visits=self.visits)
-                    else:
-                        check_2 = self.Update_visit_count(position=nodes[index][0], Visits=self.visits)
-
             ## Remove fully explored nodes from leaf node list
             for check_node in leaf_nodes:
                 # print("End check")
                 remaining_nodes = self.get_remaining_nodes(station=check_node[1], node_list=nodes,
                                                            exclusion_list=exclusion_list)
                 # print("Remaining nodes for ", check_node, remaining_nodes, exclusion_list)
-                if self.all_full_connections(station=check_node[1], node_list=nodes):
+                if self.all_full_connections(station=check_node[1], node_list=nodes) or check_node == node_to_remove:
                     # print("Removing at end of iteration: ", check_node)
                     leaf_nodes.remove(check_node)
+                    node_to_remove = 0
                 elif len(remaining_nodes) == 0:
                     # print("Removing at end of iteration: ", check_node, remaining_nodes)
                     leaf_nodes.remove(check_node)
@@ -531,6 +579,7 @@ class Player:
             values = np.array(values)
             Best_index = values_index[np.argmax(values)]
             Best_move = nodes[Best_index]
+
 
         ## If no moves possible
         if Best_move == [0, 0, 0]:
@@ -574,7 +623,7 @@ class Player:
         while counter < N:
             sim_running = True
             run_backprop = True
-            self.coverage = self.get_coverage(visit_count=self.visits)
+            self.coverage = self.get_coverage()
 
             ## Initialise ##
             node_scores = []  # The scores of all the leaf nodes in the tree (For Selection)
@@ -733,9 +782,50 @@ class Player:
 
         return Best_move
 
+    def Movement_Reveal_Round(self, possible_location, seekers, player, alpha, gamma, reward_multiplier):
+        Best_move = 0
+        exclusion_list = []
+        for seeker in seekers:
+            if seeker.position not in exclusion_list:
+                exclusion_list.append(seeker.position)  # Make seeker unable to move to occupied stations
+
+        nodes = self.generate_nodes(station_list=[self.position])  # List of nodes in the tree
+        for node in nodes:
+            if node[1] in exclusion_list:
+                nodes.remove(node)  # Remove nodes that are already occupied by other seekers
+
+        node_q_values = self.generate_node_scores(node_list=nodes,
+                                                  Q_values=self.q_values)  # The q-values of all the nodes in the tree
+        # Check if you can already reach the player
+        for node in nodes:
+            if node[1] == player.position:
+                Best_move = node
+        if Best_move == 0:
+            expanded_node, ticket_used = self.minimise_distance(destination=possible_location,
+                                                                exclude_stations=exclusion_list,
+                                                                node_list=[])
+            Best_move = [self.position, expanded_node, ticket_used]
+        print("best move", Best_move)
+        self.move(destination=Best_move[1], ticket=Best_move[2])
+
+        ## Backpropagation ##
+        reward = self.distance_based_reward(player_location=player.position,
+                                            reward_multiplier=reward_multiplier)
+        for i in range(len(nodes)):
+            node = nodes[i]
+            if node == Best_move:
+                current_value = node_q_values[i]
+                alpha = alpha
+                gamma = gamma
+                updated_value = self.Q_value_update(current_value=current_value, alpha=alpha, gamma=gamma,
+                                                    reward=reward, list_values=[])
+                new_identity = [node[0], node[1], node[2], updated_value]
+                check = self.Update_Q_value_list(new_value=new_identity, Q_values=self.q_values)
+
     def RL_Backprop(self, move_made, reward_multiplier, alpha, gamma):
-        new_coverage = self.get_coverage(visit_count=self.visits)
-        reward = reward_multiplier * (new_coverage - self.coverage)
+        new_coverage = self.get_real_coverage()
+        reward = reward_multiplier * (new_coverage - self.real_coverage)
+        self.real_coverage = new_coverage  # Update the real coverage
         nodes = self.generate_nodes(station_list=[self.position])
         future_q_values = self.generate_node_scores(node_list=nodes, Q_values=self.q_values)
         current_value = self.get_Q_value(node=move_made, Q_values=self.q_values)
