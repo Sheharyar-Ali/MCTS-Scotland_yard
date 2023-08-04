@@ -1,9 +1,12 @@
+import numpy as np
+
 from classes import *
 from graphics import *
 
 ## Initialise ##
 
 running = True
+caught = False
 Round = 1
 Round_limit = 24
 Reveal_Rounds = [3, 8, 13, 18, 24]  # [3, 6, 9, 12]
@@ -19,9 +22,8 @@ S3 = Player("seeker", start_locations[3], [8, 4, 20])
 S4 = Player("seeker", start_locations[4], [8, 4, 20])
 
 Seekers = [S1, S2, S3, S4]
-
+Seekers_position = [S1.position,S2.position,S3.position,S4.position]
 normal_reward_multiplier = 1  # The reward multiplier for normal rounds
-reveal_reward_multipler_MCTS = 1  # The reward multiplier used in the backpropagation of the MCTS in the reveal round
 reveal_reward_multiplier_Rl = 1  # The reward multiplier used in the backpropagation of the RL in the reveal round
 alpha_normal = 0.1  # "A study on automatic playing of Scotland Yard with RL and MCTS" (2018) by Cheng Qi and Chunyan Miao. Make it more aggressive
 gamma_normal = 0.9  # "A study on automatic playing of Scotland Yard with RL and MCTS" (2018) by Cheng Qi and Chunyan Miao.
@@ -29,8 +31,6 @@ alpha_reveal = 0.1  # alpha for reveal rounds
 gamma_reveal = 0.9  # gamma for reveal rounds
 C_normal = 0.5
 W_normal = 50
-C_reveal = 0.1  # More exploitation and less exploration
-W_reveal = 50
 
 print("Seeker starting locations: Seeker 1: ", S1.position, "Seeker 2:", S2.position, "Seeker 3:", S3.position,
       "Seeker 4: ", S4.position)
@@ -46,12 +46,19 @@ while running:
     print("You have the following tickets available: Bus", X.tickets[0], "Underground", X.tickets[1], "Taxi",
           X.tickets[2])
     possible_moves = X.generate_nodes(station_list=[X.position])
+    safe_moves = []
+    # Filter out occupied mstations
     for i in range(len(possible_moves)):
         move = possible_moves[i]
+        if move[2] not in Seekers_position and move[2] not in immobile_seeker_locations:
+            safe_moves.append(move)
+    # Ask player to make choice
+    for i in range(len(safe_moves)):
+        move = safe_moves[i]
         print(" Choice ", i + 1, "Move to station: ", move[1], " using", Ticket(move[2]).name)
     chosen_move = 123
     while chosen_move > len(possible_moves) or chosen_move < 0:
-        chosen_move = int(input("Please indicate which move you want to make"))
+        chosen_move = int(input("Please indicate which move you want to make "))
     move = possible_moves[chosen_move - 1]
     X.move(destination=move[1], ticket=move[2])
 
@@ -78,6 +85,7 @@ while running:
                     if seeker.caught(other_player=X):
                         running = False
                         print("Seeker", i + 1, "has caught Mr X!!!")
+                        caught = True
                     seeker.RL_Backprop(move_made=seeker_move, reward_multiplier=normal_reward_multiplier,
                                        alpha=alpha_normal, gamma=gamma_normal)
                 else:
@@ -86,6 +94,7 @@ while running:
                         immobile_seeker_locations.append(seeker.position)
             else:
                 print("Seeker ", i + 1, "out of tickets. Position is ", seeker.position)
+            Seekers_position[i] = seeker.position
 
     else:
         Possible_locations_list = [X.position]
@@ -95,28 +104,16 @@ while running:
         for i in range(len(Seekers)):
             seeker = Seekers[i]
             if sum(np.array(seeker.tickets)) > 0:
-                # seeker_move = seeker.MCTS_reveal_round(N=1000, possible_location=possible_locations_arranged[i],
-                #                                        player=X,
-                #                                        seekers=Seekers, C=C_reveal, W=W_reveal, alpha=alpha_reveal,
-                #                                        gamma=gamma_reveal,
-                #                                        reward_multiplier=reveal_reward_multipler_MCTS)
-                # if seeker_move != [0, 0, 0]:  # If seeker is able to move
-                #     seeker.move(destination=seeker_move[1], ticket=seeker_move[2], print_warning=True)
-                #     print("Seeker", i + 1, "moved to", seeker.position, "using ", Ticket(seeker_move[2]).name)
-                #     X.tickets[seeker_move[2]] += 1
-                #     if seeker.caught(other_player=X) or X.position in immobile_seeker_locations:
-                #         running = False
-                #         print("Seeker", i + 1, "has caught Mr X!!!")
-                #     seeker.RL_Backprop(move_made=seeker_move, reward_multiplier=reveal_reward_multiplier_Rl,
-                #                        alpha=alpha_normal, gamma=gamma_normal)
                 seeker.Movement_Reveal_Round(possible_location=possible_locations_arranged[i], seekers=Seekers,
                                              player=X, alpha=alpha_reveal, gamma=gamma_reveal,
                                              reward_multiplier=reveal_reward_multiplier_Rl)
                 if seeker.caught(other_player=X) or X.position in immobile_seeker_locations:
                     running = False
                     print("Seeker", i + 1, "has caught Mr X!!!")
+                    caught = True
             else:
                 print("Seeker ", i + 1, "out of tickets. Position is ", seeker.position)
+            Seekers_position[i] = seeker.position
 
     Round += 1
     if immobile_seeker is not None:
@@ -134,3 +131,11 @@ print(loc_cat)
 write_loc_cat_file("Location_categorisation.csv")
 for seeker in Seekers:
     print(seeker.get_real_coverage())
+coverage = [S1.get_real_coverage(), S2.get_real_coverage(), S3.get_real_coverage(), S4.get_coverage()]
+coverage = np.array(coverage)
+coverage = sum(coverage) / len(coverage)
+print("Average Coverage", coverage)
+comment = "Normal"
+write_data_file(file_name="run_data.csv", alpha_normal=alpha_normal, gamma_normal=gamma_normal,
+                alpha_reveal=alpha_reveal, gamma_reveal=gamma_reveal, C=C_normal, W=W_normal, Caught=caught,
+                comments=comment, Rounds=Round -1, coverage=coverage)

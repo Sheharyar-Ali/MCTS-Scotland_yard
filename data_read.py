@@ -3,7 +3,6 @@ import numpy as np
 
 file = open("Map_info_V2.csv")
 lines = file.readlines()
-fixed = pd.DataFrame({})
 Info =[]
 Q_values =[]
 Visits=[]

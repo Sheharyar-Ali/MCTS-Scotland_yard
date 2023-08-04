@@ -1,13 +1,19 @@
 import csv
+from datetime import datetime
 
 import numpy as np
 import itertools
+
+import pandas as pd
+
 from data_read import loc_cat
+
+
 # np.random.seed(1)
 
 
 def weighted_selection(categories, probabilities):
-    cat_list =[]
+    cat_list = []
     prob_list = []
     chosen = 69
     for i in range(len(categories)):
@@ -17,27 +23,30 @@ def weighted_selection(categories, probabilities):
             prob_list.append(probabilities[i])
     prob_list = np.array(prob_list)
     total_probability = np.sum(prob_list)
-    random_number = np.random.uniform(0,total_probability)
+    random_number = np.random.uniform(0, total_probability)
     cumulative_prob = 0
-
 
     for i in range(len(prob_list)):
         probability = prob_list[i]
-        cumulative_prob +=probability
+        cumulative_prob += probability
         if random_number <= cumulative_prob:
             chosen = cat_list[i]
-
-    chosen_category = categories[chosen]
-    random_station = np.random.randint(0,len(chosen_category))
-    station = chosen_category[random_station]
-
-
-
+    try:
+        chosen_category = categories[chosen]
+        random_station = np.random.randint(0, len(chosen_category))
+        station = chosen_category[random_station]
+    except IndexError:
+        print("Failure!!")
+        print("chosen", chosen)
+        print("categories", categories)
+        print("prob list", prob_list)
+        print(loc_cat[0][0] / loc_cat[0][1], loc_cat[1][0] / loc_cat[1][1], loc_cat[2][0] / loc_cat[2][1])
+        station = categories[0][0]
 
     return station
 
 
-def location_hider(player,possible_locations,loc_cat=loc_cat):
+def location_hider(player, possible_locations, loc_cat=loc_cat):
     """
     Compiles a list of all possible locations that the player can be on. These are split into 3 categories and a
     weighted selection is performed to determine one station where the player can be.
@@ -59,8 +68,10 @@ def location_hider(player,possible_locations,loc_cat=loc_cat):
             cat_2.append(location)
         else:
             cat_1.append(location)
+    if len(cat_1) == 0 and len(cat_2) == 0 and len(cat_3) == 0:
+        print(possible_locations)
 
-    categories = [cat_1,cat_2,cat_3]
+    categories = [cat_1, cat_2, cat_3]
     probabilities = [loc_cat[0][0] / loc_cat[0][1], loc_cat[1][0] / loc_cat[1][1], loc_cat[2][0] / loc_cat[2][1]]
     location = weighted_selection(categories=categories, probabilities=probabilities)
     return location
@@ -73,21 +84,22 @@ def Arrange_seekers(seeker_list, player):
     :param player: Player entity
     :return: list containing the list of locations to move to
     """
-    probabilities = [0.3,0.3,0.4]
+    probabilities = [0.3, 0.3, 0.4]
     seeker_positions = []
     for seeker in seeker_list:
         seeker_positions.append(seeker.position)
 
     target_locations = []
-    categories = [[],[],[]]
-    all_moves = player.generate_nodes(station_list=[player.position]) # get all possible accesible station from current position
+    categories = [[], [], []]
+    all_moves = player.generate_nodes(
+        station_list=[player.position])  # get all possible accesible station from current position
     station_list = []
     for move in all_moves:
         station = move[1]
         if station not in station_list:
             station_list.append(station)
 
-    for station in station_list: # Rank them based on the category
+    for station in station_list:  # Rank them based on the category
         station_info = player.get_station_info(station=station)
         if station_info[4] != [0]:
             categories[2].append(station)
@@ -96,8 +108,7 @@ def Arrange_seekers(seeker_list, player):
         else:
             categories[0].append(station)
 
-
-     # If you have more connections than seekers
+    # If you have more connections than seekers
     if len(station_list) > len(seeker_list):
         for i in range(len(seeker_list)):
             to_add = weighted_selection(categories=categories, probabilities=probabilities)
@@ -117,8 +128,6 @@ def Arrange_seekers(seeker_list, player):
     else:
         for i in range(len(station_list)):
             target_locations.append(station_list[i])
-
-
 
     difference_combinations = []
     for i in range(len(seeker_positions)):
@@ -143,7 +152,11 @@ def Arrange_seekers(seeker_list, player):
             if score < best_score:
                 best_score = score
                 best_combination = combo
+
+    if best_combination is None:
+        best_combination = list(combos)[np.random.randint(0, len(list(combos)))]
     chosen_targets = []
+    print("best combo", best_combination)
     for i in range(len(seeker_list)):
         chosen_targets.append(target_locations[best_combination[i]])
     # chosen_targets = [target_locations[best_combination[0]], target_locations[best_combination[1]],
@@ -162,25 +175,48 @@ def randomise_start_locations(Info, number_seekers):
     # start_locations = [Info[start_index[0]][0],Info[start_index[1]][0], Info[start_index[2]][0], Info[start_index[3]][0] ]
     return start_locations
 
-def write_loc_cat_file(file_name,loc_cat=loc_cat):
-    file = open(file_name, "w",newline="")
+
+def write_loc_cat_file(file_name, loc_cat=loc_cat):
+    file = open(file_name, "w", newline="")
     data = [{"a": loc_cat[0][0], "n": loc_cat[0][1]},
             {"a": loc_cat[1][0], "n": loc_cat[1][1]},
             {"a": loc_cat[2][0], "n": loc_cat[2][1]}]
     header = ["a", "n"]
-    writer = csv.DictWriter(file,fieldnames=header)
+    writer = csv.DictWriter(file, fieldnames=header)
     writer.writeheader()
     writer.writerows(data)
 
     return 0
 
 
+def write_data_file(file_name, alpha_normal, gamma_normal, alpha_reveal, gamma_reveal, C, W, Caught, comments, Rounds,
+                    coverage):
+    file = open(file_name, "r")
+    lines = file.readlines()
+    read_data = pd.DataFrame(
+        columns=["Date", "Caught", "Rounds", "C", "W", "Alpha_normal", "Gamma_normal", "Alpha_reveal", "Gamma_reveal",
+                 "Coverage", "Comments"])
+    for line in lines:
+        line = line[:-1]
+        columns = line.split(",")
+        columns = columns[1:]
+
+        if columns[0] != "Date":
+            read_data.loc[len(read_data)] = columns
+    file.close()
+    date = datetime.now().strftime("%m/%d/%Y")
+    data_to_add = [date, Caught, Rounds, C, W, alpha_normal, gamma_normal, alpha_reveal, gamma_reveal, coverage,
+                   comments]
+    read_data.loc[len(read_data)] = data_to_add
+    read_data.to_csv(file_name)
+
+    return 0
+
 
 def update_possible_location_list(possible_locations, Info, seekers, ticket):
     loc_seekers = []
     for seeker in seekers:
         loc_seekers.append(seeker.position)
-
 
     if possible_locations is None:
         ## Find every station reachable using the provided ticket ##
@@ -201,9 +237,8 @@ def update_possible_location_list(possible_locations, Info, seekers, ticket):
                     if check and target not in possible_locations and target not in loc_seekers:
                         possible_locations.append(target)
     else:
-        print("Possible locations at the start: ", possible_locations)
         new_list = []
-        for i in range(0,len(possible_locations)):
+        for i in range(0, len(possible_locations)):
             station = possible_locations[i]
             nodes = seekers[0].generate_nodes([station])
             for node in nodes:
@@ -215,6 +250,4 @@ def update_possible_location_list(possible_locations, Info, seekers, ticket):
     for station in loc_seekers:
         if station in possible_locations:
             possible_locations.remove(station)
-    print("possible locations at the end:", possible_locations)
     return possible_locations
-

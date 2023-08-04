@@ -15,11 +15,11 @@ def Draw_positions(player, seekers, immobile_seeker_locations):
     pg.draw.circle(background, (0, 255, 0), player_station_info[1], 13, 5)
     for seeker in seekers:
         seeker_station_info = seeker.get_station_info(seeker.position)
-        pg.draw.circle(background, (255, 0, 0), seeker_station_info[1], 13, 5)
+        pg.draw.circle(background, (255, 0, 0), seeker_station_info[1], 13, 3)
     if len(immobile_seeker_locations) > 0:
         for location in immobile_seeker_locations:
             location_info = player.get_station_info(location)
-            pg.draw.circle(background, (255, 0, 0), location_info[1], 13, 5)
+            pg.draw.circle(background, (255, 0, 255), location_info[1], 13, 3)
     screen.blit(background, [0, 0])
     pg.display.flip()
 
