@@ -4,7 +4,7 @@ from classes import *
 from graphics import *
 
 ## Initialise ##
-
+comment = "CT_exploitation"
 running = True
 caught = False
 Round = 1
@@ -16,12 +16,14 @@ immobile_seeker_locations = []
 start_locations = randomise_start_locations(Info=Info, number_seekers=4)
 
 X = Player("player", start_locations[0], [1, 1, 4])
-S1 = Player("seeker", start_locations[1], [8, 4, 20])
+S1 = Player("seeker", 120, [8, 4, 20])
 S2 = Player("seeker", start_locations[2], [8, 4, 20])
 S3 = Player("seeker", start_locations[3], [8, 4, 20])
 S4 = Player("seeker", start_locations[4], [8, 4, 20])
 
 Seekers = [S1, S2, S3, S4]
+
+
 Seekers_position = [S1.position,S2.position,S3.position,S4.position]
 normal_reward_multiplier = 1  # The reward multiplier for normal rounds
 reveal_reward_multiplier_Rl = 1  # The reward multiplier used in the backpropagation of the RL in the reveal round
@@ -29,8 +31,11 @@ alpha_normal = 0.1  # "A study on automatic playing of Scotland Yard with RL and
 gamma_normal = 0.9  # "A study on automatic playing of Scotland Yard with RL and MCTS" (2018) by Cheng Qi and Chunyan Miao.
 alpha_reveal = 0.1  # alpha for reveal rounds
 gamma_reveal = 0.9  # gamma for reveal rounds
-C_normal = 0.5
+C_normal = 0.2
 W_normal = 50
+print(MCTS(seekers=Seekers,player=X,Round=1,Round_limit=12,possible_location=X.position,N=10,C=C_normal,W=W_normal,r=0,alpha=alpha_normal,gamma=gamma_normal))
+
+exit()
 
 print("Seeker starting locations: Seeker 1: ", S1.position, "Seeker 2:", S2.position, "Seeker 3:", S3.position,
       "Seeker 4: ", S4.position)
@@ -50,20 +55,25 @@ while running:
     # Filter out occupied mstations
     for i in range(len(possible_moves)):
         move = possible_moves[i]
-        if move[2] not in Seekers_position and move[2] not in immobile_seeker_locations:
+        if move[1] not in Seekers_position and move[1] not in immobile_seeker_locations:
             safe_moves.append(move)
     # Ask player to make choice
-    for i in range(len(safe_moves)):
-        move = safe_moves[i]
-        print(" Choice ", i + 1, "Move to station: ", move[1], " using", Ticket(move[2]).name)
-    chosen_move = 123
-    while chosen_move > len(possible_moves) or chosen_move < 0:
-        chosen_move = int(input("Please indicate which move you want to make "))
-    move = possible_moves[chosen_move - 1]
-    X.move(destination=move[1], ticket=move[2])
+    if len(safe_moves) == 0:
+        print("No valid moves to make")
+        running = False
+        caught = True
+    else:
+        for i in range(len(safe_moves)):
+            move = safe_moves[i]
+            print(" Choice ", i + 1, "Move to station: ", move[1], " using", Ticket(move[2]).name)
+        chosen_move = 123
+        while chosen_move > len(safe_moves) or chosen_move < 0:
+            chosen_move = int(input("Please indicate which move you want to make "))
+        move = safe_moves[chosen_move - 1]
+        X.move(destination=move[1], ticket=move[2])
 
     ## Seekers' turn ##
-    if Round not in Reveal_Rounds:
+    if Round not in Reveal_Rounds and running:
         ticket_used = move[2]
         Possible_locations_list = update_possible_location_list(possible_locations=Possible_locations_list, Info=Info,
                                                                 seekers=Seekers,
@@ -96,7 +106,7 @@ while running:
                 print("Seeker ", i + 1, "out of tickets. Position is ", seeker.position)
             Seekers_position[i] = seeker.position
 
-    else:
+    elif running and Round in Reveal_Rounds:
         Possible_locations_list = [X.position]
         print("Reveal round so seekers know your current location")
         ticket_used = move[2]
@@ -131,11 +141,12 @@ print(loc_cat)
 write_loc_cat_file("Location_categorisation.csv")
 for seeker in Seekers:
     print(seeker.get_real_coverage())
-coverage = [S1.get_real_coverage(), S2.get_real_coverage(), S3.get_real_coverage(), S4.get_coverage()]
+coverage = [S1.get_real_coverage(), S2.get_real_coverage(), S3.get_real_coverage(), S4.get_real_coverage()]
 coverage = np.array(coverage)
 coverage = sum(coverage) / len(coverage)
 print("Average Coverage", coverage)
-comment = "Normal"
+Updated_q_values = update_centralised_q_values(seekers=Seekers,Q_values=Q_values)
+write_q_file(file_name="q_values.csv", Q_values=Updated_q_values)
 write_data_file(file_name="run_data.csv", alpha_normal=alpha_normal, gamma_normal=gamma_normal,
                 alpha_reveal=alpha_reveal, gamma_reveal=gamma_reveal, C=C_normal, W=W_normal, Caught=caught,
                 comments=comment, Rounds=Round -1, coverage=coverage)

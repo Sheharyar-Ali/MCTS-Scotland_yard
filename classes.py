@@ -214,13 +214,20 @@ class Player:
 
         return chosen, ticket_used
 
-    def maximise_distance(self, target):
+    def maximise_distance(self, target, seeker_locs):
         """
         Find the optimum station to move to, to maximise distance between you and a target station
+        :param seeker_locs: position of the seekers
         :param target: Station you want to move the furthest away from
         :return: Station to move to
         """
         valid_nodes = self.generate_nodes(station_list=[self.position])
+        safe_nodes =[]
+        # Ensure that you cant move to where a seeker is located
+        for node in valid_nodes:
+            if node[1] not in seeker_locs:
+                safe_nodes.append(node)
+        valid_nodes = safe_nodes
 
         difference = []
         possible_station = []
@@ -296,7 +303,6 @@ class Player:
             for j in range(len(Q_values)):
                 if Q_values[j][0] == node[0] and Q_values[j][1] == node[1] and Q_values[j][2] == node[2]:
                     node_scores.append(Q_values[j][3])
-
         return node_scores
 
     def get_Q_value(self, node, Q_values):
@@ -371,6 +377,7 @@ class Player:
         else:
             reward = 0
         return reward
+
 
     def MCTS(self, N, player, seekers, C, W, alpha, gamma, possible_locations, Round, Total_Rounds):
         counter = 0
@@ -585,7 +592,72 @@ class Player:
 
         return Best_move
 
-    # def MCTS_reveal_round(self, N, possible_location, player, seekers, C, W, alpha, gamma, reward_multiplier):
+
+
+    def Movement_Reveal_Round(self, possible_location, seekers, player, alpha, gamma, reward_multiplier):
+        Best_move = 0
+        exclusion_list = []
+        for seeker in seekers:
+            if seeker.position not in exclusion_list:
+                exclusion_list.append(seeker.position)  # Make seeker unable to move to occupied stations
+
+        nodes = self.generate_nodes(station_list=[self.position])  # List of nodes in the tree
+        for node in nodes:
+            if node[1] in exclusion_list:
+                nodes.remove(node)  # Remove nodes that are already occupied by other seekers
+
+        node_q_values = self.generate_node_scores(node_list=nodes,
+                                                  Q_values=self.q_values)  # The q-values of all the nodes in the tree
+        # Check if you can already reach the player
+        for node in nodes:
+            if node[1] == player.position:
+                Best_move = node
+
+        if Best_move == 0:
+            expanded_node, ticket_used = self.minimise_distance(destination=possible_location,
+                                                                exclude_stations=exclusion_list,
+                                                                node_list=[])
+            if expanded_node != 0:
+                Best_move = [self.position, expanded_node, ticket_used]
+            else:
+                # Make a random move to try and move
+                for node in nodes:
+                    if self.can_move(destination=node[1], ticket=node[2]):
+                        Best_move = node
+        print("best move", Best_move)
+        self.move(destination=Best_move[1], ticket=Best_move[2])
+
+        ## Backpropagation ##
+        reward = self.distance_based_reward(player_location=player.position,
+                                            reward_multiplier=reward_multiplier)
+        for i in range(len(nodes)):
+            node = nodes[i]
+            if node == Best_move:
+                current_value = node_q_values[i]
+                alpha = alpha
+                gamma = gamma
+                updated_value = self.Q_value_update(current_value=current_value, alpha=alpha, gamma=gamma,
+                                                    reward=reward, list_values=[])
+                new_identity = [node[0], node[1], node[2], updated_value]
+                check = self.Update_Q_value_list(new_value=new_identity, Q_values=self.q_values)
+
+    def RL_Backprop(self, move_made, reward_multiplier, alpha, gamma):
+        new_coverage = self.get_real_coverage()
+        reward = reward_multiplier * (new_coverage - self.real_coverage)
+        self.real_coverage = new_coverage  # Update the real coverage
+        nodes = self.generate_nodes(station_list=[self.position])
+        future_q_values = self.generate_node_scores(node_list=nodes, Q_values=self.q_values)
+        current_value = self.get_Q_value(node=move_made, Q_values=self.q_values)
+        updated_value = self.Q_value_update(current_value=current_value, alpha=alpha, gamma=gamma, reward=reward,
+                                            list_values=future_q_values)
+        new_identity = [move_made[0], move_made[1], move_made[2], updated_value]
+        self.Update_Q_value_list(new_value=new_identity, Q_values=self.q_values)
+
+
+
+
+
+ # def MCTS_reveal_round(self, N, possible_location, player, seekers, C, W, alpha, gamma, reward_multiplier):
     #     Best_move = 0
     #     error_counter = 0
     #     exclusion_list = []
@@ -779,62 +851,3 @@ class Player:
     #         print("Seeker unable to move!!!")
     #
     #     return Best_move
-
-    def Movement_Reveal_Round(self, possible_location, seekers, player, alpha, gamma, reward_multiplier):
-        Best_move = 0
-        exclusion_list = []
-        for seeker in seekers:
-            if seeker.position not in exclusion_list:
-                exclusion_list.append(seeker.position)  # Make seeker unable to move to occupied stations
-
-        nodes = self.generate_nodes(station_list=[self.position])  # List of nodes in the tree
-        for node in nodes:
-            if node[1] in exclusion_list:
-                nodes.remove(node)  # Remove nodes that are already occupied by other seekers
-
-        node_q_values = self.generate_node_scores(node_list=nodes,
-                                                  Q_values=self.q_values)  # The q-values of all the nodes in the tree
-        # Check if you can already reach the player
-        for node in nodes:
-            if node[1] == player.position:
-                Best_move = node
-
-        if Best_move == 0:
-            expanded_node, ticket_used = self.minimise_distance(destination=possible_location,
-                                                                exclude_stations=exclusion_list,
-                                                                node_list=[])
-            if expanded_node != 0:
-                Best_move = [self.position, expanded_node, ticket_used]
-            else:
-                # Make a random move to try and move
-                for node in nodes:
-                    if self.can_move(destination=node[1], ticket=node[2]):
-                        Best_move = node
-        print("best move", Best_move)
-        self.move(destination=Best_move[1], ticket=Best_move[2])
-
-        ## Backpropagation ##
-        reward = self.distance_based_reward(player_location=player.position,
-                                            reward_multiplier=reward_multiplier)
-        for i in range(len(nodes)):
-            node = nodes[i]
-            if node == Best_move:
-                current_value = node_q_values[i]
-                alpha = alpha
-                gamma = gamma
-                updated_value = self.Q_value_update(current_value=current_value, alpha=alpha, gamma=gamma,
-                                                    reward=reward, list_values=[])
-                new_identity = [node[0], node[1], node[2], updated_value]
-                check = self.Update_Q_value_list(new_value=new_identity, Q_values=self.q_values)
-
-    def RL_Backprop(self, move_made, reward_multiplier, alpha, gamma):
-        new_coverage = self.get_real_coverage()
-        reward = reward_multiplier * (new_coverage - self.real_coverage)
-        self.real_coverage = new_coverage  # Update the real coverage
-        nodes = self.generate_nodes(station_list=[self.position])
-        future_q_values = self.generate_node_scores(node_list=nodes, Q_values=self.q_values)
-        current_value = self.get_Q_value(node=move_made, Q_values=self.q_values)
-        updated_value = self.Q_value_update(current_value=current_value, alpha=alpha, gamma=gamma, reward=reward,
-                                            list_values=future_q_values)
-        new_identity = [move_made[0], move_made[1], move_made[2], updated_value]
-        self.Update_Q_value_list(new_value=new_identity, Q_values=self.q_values)

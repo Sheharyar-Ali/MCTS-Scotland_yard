@@ -1,3 +1,4 @@
+import copy
 import csv
 from datetime import datetime
 
@@ -154,7 +155,9 @@ def Arrange_seekers(seeker_list, player):
                 best_combination = combo
 
     if best_combination is None:
-        best_combination = list(combos)[np.random.randint(0, len(list(combos)))]
+        print(combos)
+        print(target_locations)
+        best_combination = list(combos)[0]
     chosen_targets = []
     print("best combo", best_combination)
     for i in range(len(seeker_list)):
@@ -213,6 +216,29 @@ def write_data_file(file_name, alpha_normal, gamma_normal, alpha_reveal, gamma_r
     return 0
 
 
+def write_q_file(file_name, Q_values):
+    Q_Values_df = pd.DataFrame(columns=["origin", "destination", "transport", "value"])
+    for entry in Q_values:
+        Q_Values_df.loc[len(Q_Values_df)] = entry
+    Q_Values_df.to_csv(file_name)
+    return 0
+
+
+def update_centralised_q_values(seekers, Q_values):
+    individual_values = []
+    for i in range(len(Q_values)):
+        buffer = []
+        for seeker in seekers:
+            seeker_q = seeker.q_values
+            buffer.append(seeker_q[i][3])
+        individual_values.append(buffer)
+
+    for i in range(len(individual_values)):
+        average = np.average(individual_values[i])
+        Q_values[i][3] = average
+    return Q_values
+
+
 def update_possible_location_list(possible_locations, Info, seekers, ticket):
     loc_seekers = []
     for seeker in seekers:
@@ -244,10 +270,230 @@ def update_possible_location_list(possible_locations, Info, seekers, ticket):
             for node in nodes:
                 if node[1] not in new_list and node[2] == ticket and node[1] not in loc_seekers:
                     new_list.append(node[1])
-
-        possible_locations = new_list
+        if len(new_list) > 0:
+            possible_locations = new_list
+        else:
+            print("ERROR WITH POSSIBLE LOCATIONS")
+            print("possible location", possible_locations)
+            print("loc seekers", loc_seekers)
 
     for station in loc_seekers:
         if station in possible_locations:
             possible_locations.remove(station)
     return possible_locations
+
+
+def Selection(seeker, nodes, leaf_nodes, C, W):
+    selection_scores = []
+    for node in leaf_nodes:
+        if node != 0:
+            v_i = seeker.UCT(parent=node[0], child=node[1], transport=node[2], C=C, W=W, Q_values=seeker.q_values,
+                             Visits=seeker.visits)
+            selection_scores.append(v_i)
+        else:
+            selection_scores.append(-69)
+    chosen_leaf_node_index = np.argmax(np.array(selection_scores))
+    chosen_node = leaf_nodes[chosen_leaf_node_index]
+    chosen_node_index = 0
+    for i in range(len(nodes)):
+        node = nodes[i]
+        if chosen_node == node:
+            chosen_node_index = i
+    return chosen_node_index, chosen_leaf_node_index, chosen_node
+
+
+def Simulation(seekers, player, chosen_move, agent, possible_location, Round, Round_limit, coalition_reduction):
+    Dummy_positions = []
+    Dummies = []
+    reward = 0
+    for seeker in seekers:
+        Dummies.append(copy.deepcopy(seeker))
+        Dummy_positions.append(seeker.position)
+
+    Player_sim = copy.deepcopy(player)
+    Dummies = np.array(Dummies)
+    Player_sim.tickets[chosen_move[2]] += 1
+
+    for i in range(agent + 1, len(Dummies)):
+        best_move, ticket_to_use = Dummies[i].minimise_distance(destination=possible_location,
+                                                                exclude_stations=Dummy_positions, node_list=[])
+        if best_move != 0:
+            Dummies[i].move(destination=best_move, ticket=ticket_to_use)
+            Dummy_positions[i] = best_move
+            Player_sim.tickets[ticket_to_use] += 1
+
+    sim_running = True
+    for Dummy in Dummies:
+        if Dummy.caught(Player_sim):
+            sim_running = False
+
+    while sim_running:
+        # Player's move
+        player_moves = []
+        distances = []
+        for Dummy in Dummies:
+            max_distance_target, transport = Player_sim.maximise_distance(target=Dummy.position,
+                                                                          seeker_locs=Dummy_positions)
+            if max_distance_target != 0:
+                player_moves.append([Player_sim.position, max_distance_target, transport])
+                distances.append(
+                    Player_sim.get_distance_difference(station_1=max_distance_target, station_2=Dummy.position))
+        if len(player_moves) > 0:
+            move_chosen = player_moves[np.argmax(np.array(distances))]
+            Player_sim.move(destination=move_chosen[1], ticket=move_chosen[2])
+            possible_location = Player_sim.position
+
+        # Seekers' move
+        for i in range(len(Dummies)):
+            best_move, ticket_to_use = Dummies[i].minimise_distance(destination=possible_location,
+                                                                    exclude_stations=Dummy_positions, node_list=[])
+            if best_move != 0:
+                Dummies[i].move(destination=best_move, ticket=ticket_to_use)
+                Dummy_positions[i] = best_move
+                Player_sim.tickets[ticket_to_use] += 1
+
+            if Dummies[i].caught(Player_sim):
+                sim_running = False
+                if i == agent:
+                    reward = 1
+                else:
+                    reward = 1 - coalition_reduction
+
+        Round += 1
+        if Round > Round_limit:
+            sim_running = False
+
+    return reward
+
+
+def MCTS(seekers, player, Round, Round_limit, possible_location, N, C, W, r, alpha, gamma):
+    ## Initialise ##
+    counter = 0
+    agent = 0
+    nodes = [[]]
+    leaf_nodes = [[]]
+    q_values = [[]]
+    q_value_indexes =[]
+    seeker_locations = []
+    Dummy_seekers = []
+    for seeker in seekers:
+        seeker_locations.append(seeker.position)
+    check = []
+    node_list = seekers[0].generate_nodes(station_list=[seekers[0].position])
+    for node in node_list:
+        if node[1] not in seeker_locations:
+            check.append(node)
+    node_list = check
+    leaf_nodes[0] = node_list
+    nodes[0] = node_list
+    node_values = seekers[0].generate_node_scores(node_list=node_list, Q_values=seekers[0].q_values)
+    q_values[0] = node_values
+
+    # Create a snapshot of the state of the seekers for each move to be used later
+    buffer = []
+    for node in leaf_nodes[0]:
+        Dummy_seeker = copy.deepcopy(seekers[0])
+        Dummy_seeker.move(destination=node[1], ticket=node[2])
+        buffer.append([Dummy_seeker, copy.deepcopy(seekers[1]), copy.deepcopy(seekers[2]), copy.deepcopy(seekers[3])])
+    Dummy_seekers.append(buffer)
+
+    for i in range(1, len(seekers)):
+        Dummy_seekers.append([])
+        leaf_nodes.append([])
+        q_value_indexes.append([])
+        q_values.append([])
+        nodes.append([])
+
+    while counter < N:
+        seeker = seekers[agent]
+        if agent == 0:
+            Dummies = Dummy_seekers[agent]
+
+            ## Selection + Expansion ##
+            # For the first seeker, selection and expansion is combined since there is only one parent node to consider
+            chosen_node_index, chosen_leaf_node_index, chosen_node = Selection(seeker=seeker, nodes=nodes[agent],
+                                                                               leaf_nodes=leaf_nodes[agent], C=C, W=W)
+
+            # Advance the state of the particular seeker for this specific leaf node
+            (Dummies[chosen_leaf_node_index][agent]).move(destination=chosen_node[1], ticket=chosen_node[2])
+
+            ## Simulation ##
+            reward = Simulation(seekers=Dummies[chosen_leaf_node_index], player=player, chosen_move=chosen_node,
+                                agent=agent, possible_location=possible_location, Round=Round, Round_limit=Round_limit,
+                                coalition_reduction=r)
+
+            ## Backpropagation ##
+            current_value = q_values[agent][chosen_node_index]
+            updated_value = seeker.Q_value_update(current_value=current_value, alpha=alpha, gamma=gamma, reward=reward,
+                                                  list_values=[])
+            q_values[agent][chosen_node_index] = updated_value
+            new_identity = [chosen_node[0], chosen_node[1], chosen_node[2], updated_value]
+            check = seeker.Update_Q_value_list(new_value=new_identity, Q_values=seeker.q_values)
+
+            counter += 1
+            leaf_nodes[agent][chosen_leaf_node_index] = 0
+            leaf_nodes[agent + 1].append(chosen_node)
+
+            end_sum = 0
+            for i in range(len(leaf_nodes[agent])):
+                if leaf_nodes[agent][i] == 0:
+                    end_sum += 1
+            if end_sum == len(leaf_nodes[agent]):
+                agent += 1
+
+
+
+        elif len(leaf_nodes[agent]) > 0:
+            print("triggered")
+            Dummies = Dummy_seekers[agent - 1]
+            ## Selection ##
+            chosen_node_index, chosen_leaf_node_index, chosen_node = Selection(seeker=seeker, nodes=nodes[agent],
+                                                                               leaf_nodes=leaf_nodes[agent], C=C, W=W)
+            ## Expansion ##
+            seeker_locations = []
+            chosen_state = Dummy_seekers[agent - 1][chosen_leaf_node_index]
+            for state in chosen_state:
+                seeker_locations.append(state.position)
+
+            check = []
+            expanded_nodes = seeker.generate_nodes(station_list=[seeker.position])
+            for node in expanded_nodes:
+                if node[1] not in seeker_locations:
+                    check.append(node)
+            expanded_nodes = check
+
+
+            for i in range(len(expanded_nodes)):
+                sim_node = expanded_nodes[i]
+                nodes[agent].append(sim_node)
+                q_value_indexes[agent-1].append(chosen_leaf_node_index)
+                (Dummies[chosen_leaf_node_index][agent]).move(destination=sim_node[1], ticket=sim_node[2])
+                Dummy_seekers[agent].append([Dummies[chosen_leaf_node_index][0], Dummies[chosen_leaf_node_index][1],
+                                             Dummies[chosen_leaf_node_index][2], Dummies[chosen_leaf_node_index][3]])
+                ## Simulation ##
+                reward = Simulation(seekers=Dummies[chosen_leaf_node_index], player=player, chosen_move=sim_node,
+                                    agent=agent, possible_location=possible_location, Round=Round,
+                                    Round_limit=Round_limit,
+                                    coalition_reduction=r)
+                ## Backpropagation ##
+                current_value = seeker.get_Q_value(node=sim_node, Q_values=seeker.q_values)
+                future_values =[]
+                future_values.append(q_values[agent-1][chosen_leaf_node_index])
+                path = [i] # Use this to search in nodes
+
+                for k in reversed(range(1,agent+1)):
+                    node_before = q_value_indexes[k-1][i]
+                    path.append(node_before)
+
+
+
+            counter+=1
+
+
+
+
+        else:
+            agent += 1
+            counter = N + 42
+
+    return np.array(Dummy_seekers)
