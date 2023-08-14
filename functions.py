@@ -1,5 +1,7 @@
 import copy
 import csv
+import gc
+import time
 from datetime import datetime
 
 import numpy as np
@@ -51,9 +53,6 @@ def location_hider(player, possible_locations, loc_cat=loc_cat):
     """
     Compiles a list of all possible locations that the player can be on. These are split into 3 categories and a
     weighted selection is performed to determine one station where the player can be.
-    :param Info: list of all stations and their connections
-    :param ticket: Ticket used by player in previous round
-    :param seekers: List of seekers
     :return: Possible location of Player
     """
     cat_1 = []  # Only taxis
@@ -283,23 +282,49 @@ def update_possible_location_list(possible_locations, Info, seekers, ticket):
     return possible_locations
 
 
-def Selection(seeker, nodes, leaf_nodes, C, W):
+def Selection(seekers, nodes, leaf_nodes, C, W):
     selection_scores = []
-    for node in leaf_nodes:
-        if node != 0:
-            v_i = seeker.UCT(parent=node[0], child=node[1], transport=node[2], C=C, W=W, Q_values=seeker.q_values,
-                             Visits=seeker.visits)
-            selection_scores.append(v_i)
-        else:
-            selection_scores.append(-69)
+    agent_list = []
+    index_list = []
+    for i in range(len(leaf_nodes)):
+        agent = leaf_nodes[i]
+        for k in range(len(agent)):
+            node = agent[k]
+            if node != 0:
+                v_i = seekers[i].UCT(parent=node[0], child=node[1], transport=node[2], C=C, W=W, Q_values=seekers[i].q_values,
+                                 Visits=seekers[i].visits)
+                selection_scores.append(v_i)
+                agent_list.append(i)
+                index_list.append(k)
+            else:
+                selection_scores.append(-69)
+                agent_list.append(i)
+                index_list.append(k)
+
     chosen_leaf_node_index = np.argmax(np.array(selection_scores))
-    chosen_node = leaf_nodes[chosen_leaf_node_index]
-    chosen_node_index = 0
-    for i in range(len(nodes)):
-        node = nodes[i]
-        if chosen_node == node:
-            chosen_node_index = i
-    return chosen_node_index, chosen_leaf_node_index, chosen_node
+    chosen_agent = agent_list[chosen_leaf_node_index]
+    chosen_index = index_list[chosen_leaf_node_index]
+    chosen_node = leaf_nodes[chosen_agent][chosen_index]
+    # chosen_node_index = 0
+    # for i in range(len(nodes)):
+    #     node = nodes[i]
+    #     if chosen_node == node:
+    #         chosen_node_index = i
+    return chosen_index, chosen_node, chosen_agent
+
+def Expansion(Dummy_seekers, agent, chosen_leaf_node_index, seeker):
+    seeker_locations = []
+    chosen_state = Dummy_seekers[agent][chosen_leaf_node_index]
+    for state in chosen_state:
+        seeker_locations.append(state.position)
+
+    check = []
+    expanded_nodes = seeker.generate_nodes(station_list=[seeker.position])
+    for node in expanded_nodes:
+        if node[1] not in seeker_locations:
+            check.append(node)
+    expanded_nodes = check
+    return expanded_nodes
 
 
 def Simulation(seekers, player, chosen_move, agent, possible_location, Round, Round_limit, coalition_reduction):
@@ -362,18 +387,20 @@ def Simulation(seekers, player, chosen_move, agent, possible_location, Round, Ro
         Round += 1
         if Round > Round_limit:
             sim_running = False
-
+    del Dummies
+    del Player_sim
     return reward
 
 
 def MCTS(seekers, player, Round, Round_limit, possible_location, N, C, W, r, alpha, gamma):
     ## Initialise ##
+    start_time = time.time()
     counter = 0
-    agent = 0
     nodes = [[]]
+    expanded_node_list =[[]]
     leaf_nodes = [[]]
     q_values = [[]]
-    q_value_indexes =[]
+    q_value_indexes = []
     seeker_locations = []
     Dummy_seekers = []
     for seeker in seekers:
@@ -384,8 +411,8 @@ def MCTS(seekers, player, Round, Round_limit, possible_location, N, C, W, r, alp
         if node[1] not in seeker_locations:
             check.append(node)
     node_list = check
-    leaf_nodes[0] = node_list
-    nodes[0] = node_list
+    leaf_nodes[0] = copy.deepcopy(node_list)
+    nodes[0] = copy.deepcopy(node_list)
     node_values = seekers[0].generate_node_scores(node_list=node_list, Q_values=seekers[0].q_values)
     q_values[0] = node_values
 
@@ -403,16 +430,17 @@ def MCTS(seekers, player, Round, Round_limit, possible_location, N, C, W, r, alp
         q_value_indexes.append([])
         q_values.append([])
         nodes.append([])
+        expanded_node_list.append([])
 
     while counter < N:
-        seeker = seekers[agent]
+
+        ## Selection ##
+        chosen_leaf_node_index, chosen_node, agent = Selection(seekers=seekers, nodes=nodes,
+                                                                           leaf_nodes=leaf_nodes, C=C, W=W)
         if agent == 0:
+            seeker = seekers[agent]
             Dummies = Dummy_seekers[agent]
 
-            ## Selection + Expansion ##
-            # For the first seeker, selection and expansion is combined since there is only one parent node to consider
-            chosen_node_index, chosen_leaf_node_index, chosen_node = Selection(seeker=seeker, nodes=nodes[agent],
-                                                                               leaf_nodes=leaf_nodes[agent], C=C, W=W)
 
             # Advance the state of the particular seeker for this specific leaf node
             (Dummies[chosen_leaf_node_index][agent]).move(destination=chosen_node[1], ticket=chosen_node[2])
@@ -423,77 +451,195 @@ def MCTS(seekers, player, Round, Round_limit, possible_location, N, C, W, r, alp
                                 coalition_reduction=r)
 
             ## Backpropagation ##
-            current_value = q_values[agent][chosen_node_index]
+            current_value = q_values[agent][chosen_leaf_node_index]
             updated_value = seeker.Q_value_update(current_value=current_value, alpha=alpha, gamma=gamma, reward=reward,
                                                   list_values=[])
-            q_values[agent][chosen_node_index] = updated_value
+            q_values[agent][chosen_leaf_node_index] = updated_value
             new_identity = [chosen_node[0], chosen_node[1], chosen_node[2], updated_value]
             check = seeker.Update_Q_value_list(new_value=new_identity, Q_values=seeker.q_values)
 
             counter += 1
             leaf_nodes[agent][chosen_leaf_node_index] = 0
             leaf_nodes[agent + 1].append(chosen_node)
-
-            end_sum = 0
-            for i in range(len(leaf_nodes[agent])):
-                if leaf_nodes[agent][i] == 0:
-                    end_sum += 1
-            if end_sum == len(leaf_nodes[agent]):
-                agent += 1
+            Dummy_seekers[agent +1].append(Dummies[chosen_leaf_node_index])
+            expanded_node_list[agent+1].append([])
 
 
 
-        elif len(leaf_nodes[agent]) > 0:
-            print("triggered")
-            Dummies = Dummy_seekers[agent - 1]
-            ## Selection ##
-            chosen_node_index, chosen_leaf_node_index, chosen_node = Selection(seeker=seeker, nodes=nodes[agent],
-                                                                               leaf_nodes=leaf_nodes[agent], C=C, W=W)
+
+
+        elif len(leaf_nodes[agent]) > 0 and agent <= len(seekers):
+            Dummies = Dummy_seekers[agent]
+            seeker = seekers[agent]
+
             ## Expansion ##
-            seeker_locations = []
-            chosen_state = Dummy_seekers[agent - 1][chosen_leaf_node_index]
-            for state in chosen_state:
-                seeker_locations.append(state.position)
+            expanded_nodes = Expansion(Dummy_seekers=Dummy_seekers,agent=agent,chosen_leaf_node_index=chosen_leaf_node_index,seeker=seeker)
 
-            check = []
-            expanded_nodes = seeker.generate_nodes(station_list=[seeker.position])
-            for node in expanded_nodes:
-                if node[1] not in seeker_locations:
-                    check.append(node)
-            expanded_nodes = check
-
+            # seeker_locations = []
+            # chosen_state = Dummy_seekers[agent][chosen_leaf_node_index]
+            # for state in chosen_state:
+            #     seeker_locations.append(state.position)
+            #
+            # check = []
+            # expanded_nodes = seeker.generate_nodes(station_list=[seeker.position])
+            # for node in expanded_nodes:
+            #     if node[1] not in seeker_locations:
+            #         check.append(node)
+            # expanded_nodes = check
 
             for i in range(len(expanded_nodes)):
                 sim_node = expanded_nodes[i]
-                nodes[agent].append(sim_node)
-                q_value_indexes[agent-1].append(chosen_leaf_node_index)
-                (Dummies[chosen_leaf_node_index][agent]).move(destination=sim_node[1], ticket=sim_node[2])
-                Dummy_seekers[agent].append([Dummies[chosen_leaf_node_index][0], Dummies[chosen_leaf_node_index][1],
-                                             Dummies[chosen_leaf_node_index][2], Dummies[chosen_leaf_node_index][3]])
-                ## Simulation ##
-                reward = Simulation(seekers=Dummies[chosen_leaf_node_index], player=player, chosen_move=sim_node,
-                                    agent=agent, possible_location=possible_location, Round=Round,
-                                    Round_limit=Round_limit,
-                                    coalition_reduction=r)
-                ## Backpropagation ##
-                current_value = seeker.get_Q_value(node=sim_node, Q_values=seeker.q_values)
-                future_values =[]
-                future_values.append(q_values[agent-1][chosen_leaf_node_index])
-                path = [i] # Use this to search in nodes
 
-                for k in reversed(range(1,agent+1)):
-                    node_before = q_value_indexes[k-1][i]
-                    path.append(node_before)
+                if sim_node not in expanded_node_list[agent][chosen_leaf_node_index]:
+                    nodes[agent].append(sim_node)
+                    q_value_indexes[agent - 1].append(chosen_leaf_node_index)
+                    (Dummies[chosen_leaf_node_index][agent]).move(destination=sim_node[1], ticket=sim_node[2])
+                    expanded_node_list[agent][chosen_leaf_node_index].append(sim_node)
+
+                    ## Simulation ##
+                    reward = Simulation(seekers=Dummies[chosen_leaf_node_index], player=player, chosen_move=sim_node,
+                                        agent=agent, possible_location=possible_location, Round=Round,
+                                        Round_limit=Round_limit,
+                                        coalition_reduction=r)
+                    break
+
+            ## Backpropagation ##
+            current_value = seeker.get_Q_value(node=sim_node, Q_values=seeker.q_values)
+            seeker.Update_visit_count(position=sim_node[1], Visits=seeker.visits)
+            q_values[agent].append(current_value)
+            path = [i]  # Path of q_values indexes
+            chosen_index = i
+            path_values = []
+            # print("q values", q_values)
+            # print("q_ value indexes", q_value_indexes)
+            for k in reversed(range(0, agent)):
+                try:
+                    node_number = q_value_indexes[k][chosen_index]
+                    path.append(node_number)
+                    chosen_index = node_number
+                except IndexError:
+                    print("agent", agent)
+                    print("k", k)
+                    print("chosen index", chosen_index)
+                    print("q_value_indexes", q_value_indexes)
+            path.reverse()
+            # print("path", path)
+            for j in range(len(path)):
+                node_to_choose = path[j]
+                value = q_values[j][node_to_choose]
+                path_values.append(value)
+            # print("path values", path_values)
+            # calculate the new values
+            for j in range(len(path)):
+                current_value = path_values[j]
+                future_values = path_values[j:]
+                updated_value = seekers[j].Q_value_update(current_value=current_value, alpha=alpha, gamma=gamma,
+                                                          reward=reward,
+                                                          list_values=future_values)
+                path_values[j] = updated_value
+                q_values[j][path[j]] = updated_value
+
+            # print("path values after update", path_values)
+            # print("q values after update", q_values)
+            # Update the values
+            # print("nodes", nodes)
+            for j in range(len(path)):
+                new_value = path_values[j]
+                node_to_update = nodes[j][path[j]]
+                new_identity = [node_to_update[0], node_to_update[1], node_to_update[2], new_value]
+                check = seekers[j].Update_Q_value_list(new_value=new_identity, Q_values=seekers[j].q_values)
+
+            # print("Done iteration")
+            counter += 1
+            if agent < len(seekers) -1:
+                leaf_nodes[agent + 1].append(sim_node)
+                Dummy_seekers[agent + 1].append(Dummies[chosen_leaf_node_index])
+                expanded_node_list[agent + 1].append([])
+
+            # Remove fully explored leaf nodes
+            check_sum = 0
+            for node in expanded_nodes:
+                if node in expanded_node_list[agent][chosen_leaf_node_index]:
+                    check_sum +=1
+            if check_sum == len(expanded_nodes):
+                leaf_nodes[agent][chosen_leaf_node_index] = 0
 
 
+            # leaf_nodes[agent][chosen_leaf_node_index] = 0
+            # if agent < len(seekers) - 1:
+            #     for node in expanded_nodes:
+            #         leaf_nodes[agent + 1].append(node)
+            #
+            # end_sum = 0
+            # for i in range(len(leaf_nodes[agent])):
+            #     if leaf_nodes[agent][i] == 0:
+            #         end_sum += 1
+            # if end_sum == len(leaf_nodes[agent]):
+            #     # if agent<3:
+            #     #     print("leaf nodes", leaf_nodes[agent], "  ", leaf_nodes[agent+1])
+            #     agent += 1
+        elif agent ==3:
+            print(leaf_nodes[agent])
+            print(leaf_nodes)
+            print(nodes)
 
-            counter+=1
-
-
-
-
-        else:
-            agent += 1
+        # Check if all nodes are explored
+        all_done=[]
+        for seeker in seekers:
+            all_done.append(0)
+        for i in range(len(leaf_nodes)):
+            node_list = leaf_nodes[i]
+            length = len(node_list)
+            check_sum = 0
+            for node in node_list:
+                if node == 0:
+                    check_sum+=1
+            if check_sum == length:
+                all_done[i] = 1
+        all_done = np.array(all_done)
+        if np.sum(all_done) == len(seekers):
             counter = N + 42
 
-    return np.array(Dummy_seekers)
+    final_values = q_values[0]
+    chosen_index = np.argmax(final_values)
+    path = [chosen_index]
+
+    for i in range(0, len(q_value_indexes)):
+        buffer = []
+        buffer_index = []
+        list = q_value_indexes[i]
+
+        for k in range(len(list)):
+            entry = list[k]
+            if entry == chosen_index:
+                buffer.append(q_values[i + 1][k])
+                buffer_index.append(k)
+        try:
+            chosen_index = buffer_index[np.argmax(buffer)]
+            path.append(chosen_index)
+        except ValueError:
+            print("buffer", buffer)
+            print("buffer index", buffer_index)
+            print("q_values", q_values)
+            print("q value index", q_value_indexes)
+            print("q_values_indexes i", q_value_indexes[i])
+            print("i", i)
+            print("chosen index", chosen_index)
+
+            # This only happens if no node is explored for this particular agent
+            # Thus a random move for this agent is chosen
+            chosen_index = np.random.randint(0,len(nodes[i+1]))
+            path.append(chosen_index)
+
+
+    chosen_node = []
+    chosen_q = []
+    for i in range(len(path)):
+        chosen_node.append(nodes[i][path[i]])
+        chosen_q.append(q_values[i][path[i]])
+
+    average = np.average(chosen_q)
+    end_time = time.time()
+    del Dummy_seekers
+    print("time", end_time-start_time)
+    return chosen_node, average

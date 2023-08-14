@@ -4,7 +4,7 @@ from classes import *
 from graphics import *
 
 ## Initialise ##
-comment = "CT_exploitation"
+comment = "Normal"
 running = True
 caught = False
 Round = 1
@@ -13,18 +13,21 @@ Reveal_Rounds = [3, 8, 13, 18, 24]  # [3, 6, 9, 12]
 Possible_locations_list = None  # Updated during reveal rounds
 immobile_seeker = None
 immobile_seeker_locations = []
-start_locations = randomise_start_locations(Info=Info, number_seekers=4)
+max_location_search = 10
 
+start_locations = randomise_start_locations(Info=Info, number_seekers=4)
 X = Player("player", start_locations[0], [1, 1, 4])
-S1 = Player("seeker", 120, [8, 4, 20])
+S1 = Player("seeker", start_locations[1], [8, 4, 20])
 S2 = Player("seeker", start_locations[2], [8, 4, 20])
 S3 = Player("seeker", start_locations[3], [8, 4, 20])
 S4 = Player("seeker", start_locations[4], [8, 4, 20])
-
+# S1 = Player("seeker", 120, [8, 4, 20])
+# S2 = Player("seeker", 162, [8, 4, 20])
+# S3 = Player("seeker", 197, [8, 4, 20])
+# S4 = Player("seeker", 119, [8, 4, 20])
 Seekers = [S1, S2, S3, S4]
 
-
-Seekers_position = [S1.position,S2.position,S3.position,S4.position]
+Seekers_position = [S1.position, S2.position, S3.position, S4.position]
 normal_reward_multiplier = 1  # The reward multiplier for normal rounds
 reveal_reward_multiplier_Rl = 1  # The reward multiplier used in the backpropagation of the RL in the reveal round
 alpha_normal = 0.1  # "A study on automatic playing of Scotland Yard with RL and MCTS" (2018) by Cheng Qi and Chunyan Miao. Make it more aggressive
@@ -33,9 +36,6 @@ alpha_reveal = 0.1  # alpha for reveal rounds
 gamma_reveal = 0.9  # gamma for reveal rounds
 C_normal = 0.2
 W_normal = 50
-print(MCTS(seekers=Seekers,player=X,Round=1,Round_limit=12,possible_location=X.position,N=10,C=C_normal,W=W_normal,r=0,alpha=alpha_normal,gamma=gamma_normal))
-
-exit()
 
 print("Seeker starting locations: Seeker 1: ", S1.position, "Seeker 2:", S2.position, "Seeker 3:", S3.position,
       "Seeker 4: ", S4.position)
@@ -75,18 +75,37 @@ while running:
     ## Seekers' turn ##
     if Round not in Reveal_Rounds and running:
         ticket_used = move[2]
+        seeker_moves = []
+        seeker_move_scores = []
+        location_list_short = []
         Possible_locations_list = update_possible_location_list(possible_locations=Possible_locations_list, Info=Info,
                                                                 seekers=Seekers,
                                                                 ticket=ticket_used)
         X.update_loc_cat(player=X, location_list=Possible_locations_list)
 
+        if len(Possible_locations_list) > max_location_search:
+            while len(location_list_short) < max_location_search:
+                chosen_location = location_hider(player=X, possible_locations=Possible_locations_list)
+                if chosen_location not in location_list_short:
+                    location_list_short.append(chosen_location)
+                else:
+                    Possible_locations_list.remove(chosen_location)
+        else:
+            location_list_short = Possible_locations_list
+        print("location list", location_list_short)
+        for location in location_list_short:
+            seeker_move, move_score = MCTS(seekers=Seekers, player=X, Round=Round, Round_limit=Round_limit,
+                                           possible_location=location, N=500,
+                                           C=C_normal, W=W_normal, r=0, alpha=alpha_normal, gamma=gamma_normal)
+            seeker_moves.append(seeker_move)
+            seeker_move_scores.append(move_score)
+
+        move_chosen = seeker_moves[np.argmax(seeker_move_scores)]
+
         for i in range(len(Seekers)):
             seeker = Seekers[i]
             if sum(np.array(seeker.tickets)) > 0:
-                seeker_move = seeker.MCTS(N=1000, player=X,
-                                          seekers=Seekers, C=C_normal, W=W_normal, alpha=alpha_normal,
-                                          gamma=gamma_normal, possible_locations=Possible_locations_list,
-                                          Round=Round, Total_Rounds=Round_limit)
+                seeker_move = move_chosen[i]
                 if seeker_move != [0, 0, 0]:
                     seeker.move(destination=seeker_move[1], ticket=seeker_move[2], print_warning=True)
                     print("Seeker", i + 1, "moved to", seeker.position, "using ", Ticket(seeker_move[2]).name,
@@ -145,8 +164,8 @@ coverage = [S1.get_real_coverage(), S2.get_real_coverage(), S3.get_real_coverage
 coverage = np.array(coverage)
 coverage = sum(coverage) / len(coverage)
 print("Average Coverage", coverage)
-Updated_q_values = update_centralised_q_values(seekers=Seekers,Q_values=Q_values)
+Updated_q_values = update_centralised_q_values(seekers=Seekers, Q_values=Q_values)
 write_q_file(file_name="q_values.csv", Q_values=Updated_q_values)
 write_data_file(file_name="run_data.csv", alpha_normal=alpha_normal, gamma_normal=gamma_normal,
                 alpha_reveal=alpha_reveal, gamma_reveal=gamma_reveal, C=C_normal, W=W_normal, Caught=caught,
-                comments=comment, Rounds=Round -1, coverage=coverage)
+                comments=comment, Rounds=Round - 1, coverage=coverage)

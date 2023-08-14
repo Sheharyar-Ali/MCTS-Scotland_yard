@@ -81,7 +81,3 @@ for line in lines:
     line = line.split(",")
     if line[0] != "a":
         loc_cat.append([int(line[0]), int(line[1])])
-
-
-
-
