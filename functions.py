@@ -1,6 +1,5 @@
 import copy
 import csv
-import gc
 import time
 from datetime import datetime
 
@@ -238,8 +237,9 @@ def update_centralised_q_values(seekers, Q_values):
     return Q_values
 
 
-def update_possible_location_list(possible_locations, Info, seekers, ticket):
+def update_possible_location_list(possible_locations, Info, seekers, ticket, player):
     loc_seekers = []
+    player.tickets[ticket] += 1
     for seeker in seekers:
         loc_seekers.append(seeker.position)
 
@@ -265,7 +265,7 @@ def update_possible_location_list(possible_locations, Info, seekers, ticket):
         new_list = []
         for i in range(0, len(possible_locations)):
             station = possible_locations[i]
-            nodes = seekers[0].generate_nodes([station])
+            nodes = player.generate_nodes([station])
             for node in nodes:
                 if node[1] not in new_list and node[2] == ticket and node[1] not in loc_seekers:
                     new_list.append(node[1])
@@ -275,10 +275,15 @@ def update_possible_location_list(possible_locations, Info, seekers, ticket):
             print("ERROR WITH POSSIBLE LOCATIONS")
             print("possible location", possible_locations)
             print("loc seekers", loc_seekers)
+            for i in range(0, len(possible_locations)):
+                station = possible_locations[i]
+                nodes = player.generate_nodes([station])
+                print("nodes", nodes)
 
     for station in loc_seekers:
         if station in possible_locations:
             possible_locations.remove(station)
+    player.tickets[ticket] -= 1
     return possible_locations
 
 
@@ -291,8 +296,9 @@ def Selection(seekers, nodes, leaf_nodes, C, W):
         for k in range(len(agent)):
             node = agent[k]
             if node != 0:
-                v_i = seekers[i].UCT(parent=node[0], child=node[1], transport=node[2], C=C, W=W, Q_values=seekers[i].q_values,
-                                 Visits=seekers[i].visits)
+                v_i = seekers[i].UCT(parent=node[0], child=node[1], transport=node[2], C=C, W=W,
+                                     Q_values=seekers[i].q_values,
+                                     Visits=seekers[i].visits)
                 selection_scores.append(v_i)
                 agent_list.append(i)
                 index_list.append(k)
@@ -312,6 +318,7 @@ def Selection(seekers, nodes, leaf_nodes, C, W):
     #         chosen_node_index = i
     return chosen_index, chosen_node, chosen_agent
 
+
 def Expansion(Dummy_seekers, agent, chosen_leaf_node_index, seeker):
     seeker_locations = []
     chosen_state = Dummy_seekers[agent][chosen_leaf_node_index]
@@ -330,29 +337,45 @@ def Expansion(Dummy_seekers, agent, chosen_leaf_node_index, seeker):
 def Simulation(seekers, player, chosen_move, agent, possible_location, Round, Round_limit, coalition_reduction):
     Dummy_positions = []
     Dummies = []
-    reward = 0
+
     for seeker in seekers:
         Dummies.append(copy.deepcopy(seeker))
         Dummy_positions.append(seeker.position)
+    Initial_distance_difference = Dummies[agent].get_distance_difference(station_1=chosen_move[0],
+                                                                         station_2=possible_location)
+    Final_distance_difference = Dummies[agent].get_distance_difference(station_1=chosen_move[1],
+                                                                       station_2=possible_location)
 
+    reward = (Initial_distance_difference - Final_distance_difference) / 100
     Player_sim = copy.deepcopy(player)
     Dummies = np.array(Dummies)
     Player_sim.tickets[chosen_move[2]] += 1
+    # if reward > 0:
+    #     print(reward, chosen_move, (Initial_distance_difference - Final_distance_difference) / 100)
 
+    sim_running = True
+
+    # Move all other seekers once
     for i in range(agent + 1, len(Dummies)):
         best_move, ticket_to_use = Dummies[i].minimise_distance(destination=possible_location,
                                                                 exclude_stations=Dummy_positions, node_list=[])
+
         if best_move != 0:
             Dummies[i].move(destination=best_move, ticket=ticket_to_use)
             Dummy_positions[i] = best_move
             Player_sim.tickets[ticket_to_use] += 1
 
-    sim_running = True
-    for Dummy in Dummies:
-        if Dummy.caught(Player_sim):
+    for i in range(len(Dummies)):
+        if Player_sim.caught(Dummies[i]):
             sim_running = False
+            if i == agent:
+                reward += 1
+            else:
+                reward += 1 - coalition_reduction
+
 
     while sim_running:
+
         # Player's move
         player_moves = []
         distances = []
@@ -362,10 +385,12 @@ def Simulation(seekers, player, chosen_move, agent, possible_location, Round, Ro
             if max_distance_target != 0:
                 player_moves.append([Player_sim.position, max_distance_target, transport])
                 distances.append(
-                    Player_sim.get_distance_difference(station_1=max_distance_target, station_2=Dummy.position))
+                    Player_sim.get_average_distance_difference(station_1=max_distance_target,
+                                                               station_2_list=Dummy_positions))
+
         if len(player_moves) > 0:
             move_chosen = player_moves[np.argmax(np.array(distances))]
-            Player_sim.move(destination=move_chosen[1], ticket=move_chosen[2])
+            Player_sim.move(destination=move_chosen[1], ticket=move_chosen[2], print_warning=True)
             possible_location = Player_sim.position
 
         # Seekers' move
@@ -379,16 +404,20 @@ def Simulation(seekers, player, chosen_move, agent, possible_location, Round, Ro
 
             if Dummies[i].caught(Player_sim):
                 sim_running = False
+
                 if i == agent:
-                    reward = 1
+                    reward += 1
                 else:
-                    reward = 1 - coalition_reduction
+                    reward += 1 - coalition_reduction
 
         Round += 1
         if Round > Round_limit:
             sim_running = False
+
     del Dummies
     del Player_sim
+
+
     return reward
 
 
@@ -397,7 +426,7 @@ def MCTS(seekers, player, Round, Round_limit, possible_location, N, C, W, r, alp
     start_time = time.time()
     counter = 0
     nodes = [[]]
-    expanded_node_list =[[]]
+    expanded_node_list = [[]]
     leaf_nodes = [[]]
     q_values = [[]]
     q_value_indexes = []
@@ -436,12 +465,12 @@ def MCTS(seekers, player, Round, Round_limit, possible_location, N, C, W, r, alp
 
         ## Selection ##
         chosen_leaf_node_index, chosen_node, agent = Selection(seekers=seekers, nodes=nodes,
-                                                                           leaf_nodes=leaf_nodes, C=C, W=W)
+                                                               leaf_nodes=leaf_nodes, C=C, W=W)
+
         if agent == 0:
+
             seeker = seekers[agent]
             Dummies = Dummy_seekers[agent]
-
-
             # Advance the state of the particular seeker for this specific leaf node
             (Dummies[chosen_leaf_node_index][agent]).move(destination=chosen_node[1], ticket=chosen_node[2])
 
@@ -454,15 +483,16 @@ def MCTS(seekers, player, Round, Round_limit, possible_location, N, C, W, r, alp
             current_value = q_values[agent][chosen_leaf_node_index]
             updated_value = seeker.Q_value_update(current_value=current_value, alpha=alpha, gamma=gamma, reward=reward,
                                                   list_values=[])
+
             q_values[agent][chosen_leaf_node_index] = updated_value
-            new_identity = [chosen_node[0], chosen_node[1], chosen_node[2], updated_value]
-            check = seeker.Update_Q_value_list(new_value=new_identity, Q_values=seeker.q_values)
+            # new_identity = [chosen_node[0], chosen_node[1], chosen_node[2], updated_value]
+            # check = seeker.Update_Q_value_list(new_value=new_identity, Q_values=seeker.q_values)
 
             counter += 1
             leaf_nodes[agent][chosen_leaf_node_index] = 0
             leaf_nodes[agent + 1].append(chosen_node)
-            Dummy_seekers[agent +1].append(Dummies[chosen_leaf_node_index])
-            expanded_node_list[agent+1].append([])
+            Dummy_seekers[agent + 1].append(Dummies[chosen_leaf_node_index])
+            expanded_node_list[agent + 1].append([])
 
 
 
@@ -473,7 +503,8 @@ def MCTS(seekers, player, Round, Round_limit, possible_location, N, C, W, r, alp
             seeker = seekers[agent]
 
             ## Expansion ##
-            expanded_nodes = Expansion(Dummy_seekers=Dummy_seekers,agent=agent,chosen_leaf_node_index=chosen_leaf_node_index,seeker=seeker)
+            expanded_nodes = Expansion(Dummy_seekers=Dummy_seekers, agent=agent,
+                                       chosen_leaf_node_index=chosen_leaf_node_index, seeker=seeker)
 
             # seeker_locations = []
             # chosen_state = Dummy_seekers[agent][chosen_leaf_node_index]
@@ -486,7 +517,7 @@ def MCTS(seekers, player, Round, Round_limit, possible_location, N, C, W, r, alp
             #     if node[1] not in seeker_locations:
             #         check.append(node)
             # expanded_nodes = check
-
+            current_index = 0
             for i in range(len(expanded_nodes)):
                 sim_node = expanded_nodes[i]
 
@@ -501,14 +532,17 @@ def MCTS(seekers, player, Round, Round_limit, possible_location, N, C, W, r, alp
                                         agent=agent, possible_location=possible_location, Round=Round,
                                         Round_limit=Round_limit,
                                         coalition_reduction=r)
+                    current_index = len(nodes[agent]) -1
+
                     break
+
 
             ## Backpropagation ##
             current_value = seeker.get_Q_value(node=sim_node, Q_values=seeker.q_values)
             seeker.Update_visit_count(position=sim_node[1], Visits=seeker.visits)
             q_values[agent].append(current_value)
-            path = [i]  # Path of q_values indexes
-            chosen_index = i
+            path = [current_index]  # Path of q_values indexes
+            chosen_index = current_index
             path_values = []
             # print("q values", q_values)
             # print("q_ value indexes", q_value_indexes)
@@ -543,15 +577,15 @@ def MCTS(seekers, player, Round, Round_limit, possible_location, N, C, W, r, alp
             # print("q values after update", q_values)
             # Update the values
             # print("nodes", nodes)
-            for j in range(len(path)):
-                new_value = path_values[j]
-                node_to_update = nodes[j][path[j]]
-                new_identity = [node_to_update[0], node_to_update[1], node_to_update[2], new_value]
-                check = seekers[j].Update_Q_value_list(new_value=new_identity, Q_values=seekers[j].q_values)
+            # for j in range(len(path)):
+            #     new_value = path_values[j]
+            #     node_to_update = nodes[j][path[j]]
+            #     new_identity = [node_to_update[0], node_to_update[1], node_to_update[2], new_value]
+            #     check = seekers[j].Update_Q_value_list(new_value=new_identity, Q_values=seekers[j].q_values)
 
             # print("Done iteration")
             counter += 1
-            if agent < len(seekers) -1:
+            if agent < len(seekers) - 1:
                 leaf_nodes[agent + 1].append(sim_node)
                 Dummy_seekers[agent + 1].append(Dummies[chosen_leaf_node_index])
                 expanded_node_list[agent + 1].append([])
@@ -560,10 +594,9 @@ def MCTS(seekers, player, Round, Round_limit, possible_location, N, C, W, r, alp
             check_sum = 0
             for node in expanded_nodes:
                 if node in expanded_node_list[agent][chosen_leaf_node_index]:
-                    check_sum +=1
+                    check_sum += 1
             if check_sum == len(expanded_nodes):
                 leaf_nodes[agent][chosen_leaf_node_index] = 0
-
 
             # leaf_nodes[agent][chosen_leaf_node_index] = 0
             # if agent < len(seekers) - 1:
@@ -578,13 +611,13 @@ def MCTS(seekers, player, Round, Round_limit, possible_location, N, C, W, r, alp
             #     # if agent<3:
             #     #     print("leaf nodes", leaf_nodes[agent], "  ", leaf_nodes[agent+1])
             #     agent += 1
-        elif agent ==3:
+        elif agent == 3:
             print(leaf_nodes[agent])
             print(leaf_nodes)
             print(nodes)
 
         # Check if all nodes are explored
-        all_done=[]
+        all_done = []
         for seeker in seekers:
             all_done.append(0)
         for i in range(len(leaf_nodes)):
@@ -593,11 +626,12 @@ def MCTS(seekers, player, Round, Round_limit, possible_location, N, C, W, r, alp
             check_sum = 0
             for node in node_list:
                 if node == 0:
-                    check_sum+=1
+                    check_sum += 1
             if check_sum == length:
                 all_done[i] = 1
         all_done = np.array(all_done)
         if np.sum(all_done) == len(seekers):
+            print("triggered", counter)
             counter = N + 42
 
     final_values = q_values[0]
@@ -628,9 +662,8 @@ def MCTS(seekers, player, Round, Round_limit, possible_location, N, C, W, r, alp
 
             # This only happens if no node is explored for this particular agent
             # Thus a random move for this agent is chosen
-            chosen_index = np.random.randint(0,len(nodes[i+1]))
+            chosen_index = np.random.randint(0, len(nodes[i + 1]))
             path.append(chosen_index)
-
 
     chosen_node = []
     chosen_q = []
@@ -641,5 +674,6 @@ def MCTS(seekers, player, Round, Round_limit, possible_location, N, C, W, r, alp
     average = np.average(chosen_q)
     end_time = time.time()
     del Dummy_seekers
-    print("time", end_time-start_time)
+    print("time", end_time - start_time, counter, len(nodes[0]), len(nodes[1]), len(nodes[2]), len(nodes[3]) )
+
     return chosen_node, average
