@@ -2,7 +2,7 @@ from classes import *
 from graphics import *
 
 ## Initialise ##
-comment = "Normal-loc_cat_reward"
+comment = "Normal-coverage_reward"
 running = True
 caught = False
 Round = 1
@@ -20,11 +20,11 @@ S1 = Player("seeker", start_locations[1], [8, 4, 20])
 S2 = Player("seeker", start_locations[2], [8, 4, 20])
 S3 = Player("seeker", start_locations[3], [8, 4, 20])
 S4 = Player("seeker", start_locations[4], [8, 4, 20])
-# X = Player("player", 111, [2, 1, 4])
-# S1 = Player("seeker", 162, [8, 4, 20])
-# S2 = Player("seeker", 106, [8, 4, 20])
-# S3 = Player("seeker", 159, [8, 4, 20])
-# S4 = Player("seeker", 120, [8, 4, 20])
+# X = Player("player", 197, [8, 3, 3])
+# S1 = Player("seeker", 153, [6, 4, 18])
+# S2 = Player("seeker", 183, [6, 2, 20])
+# S3 = Player("seeker", 184, [5, 3, 20])
+# S4 = Player("seeker", 191, [5, 4, 19])
 Seekers = [S1, S2, S3, S4]
 
 Seekers_position = [S1.position, S2.position, S3.position, S4.position]
@@ -37,7 +37,7 @@ gamma_reveal = 0.9  # gamma for reveal rounds
 C_normal = 0.2
 W_normal = 50
 
-# location = 114
+# location = 197
 # print(MCTS(seekers=Seekers, player=X, Round=Round, Round_limit=Round_limit,
 #                                            possible_location=location, N=N,
 #                                            C=C_normal, W=W_normal, r=0, alpha=alpha_normal, gamma=gamma_normal))
@@ -89,6 +89,7 @@ while running:
         X.update_loc_cat(player=X, location_list=Possible_locations_list)
 
         if len(Possible_locations_list) > max_location_search:
+            N = 500
             while len(location_list_short) < max_location_search:
                 chosen_location = location_hider(player=X, possible_locations=Possible_locations_list)
                 if chosen_location not in location_list_short:
@@ -97,11 +98,12 @@ while running:
                     Possible_locations_list.remove(chosen_location)
         else:
             location_list_short = Possible_locations_list
+            N = 1000
         print("location list", location_list_short)
         for location in location_list_short:
             seeker_move, move_score = MCTS(seekers=Seekers, player=X, Round=Round, Round_limit=Round_limit,
                                            possible_location=location, N=N,
-                                           C=C_normal, W=W_normal, r=0, alpha=alpha_normal, gamma=gamma_normal)
+                                           C=C_normal, W=W_normal, r=0.2, alpha=alpha_normal, gamma=gamma_normal)
             seeker_moves.append(seeker_move)
             seeker_move_scores.append(move_score)
         print(seeker_moves)
