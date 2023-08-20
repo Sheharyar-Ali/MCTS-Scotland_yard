@@ -485,10 +485,10 @@ class Player:
         new_coverage = self.get_real_coverage()
         self.real_coverage = new_coverage  # Update the real coverage
 
-        reward = reward_multiplier * self.total_coverage_reward(
-            seekers=seekers)  # multiplier should be in the order of 10
+        # reward = reward_multiplier * self.total_coverage_reward(
+        #     seekers=seekers)  # multiplier should be in the order of 100
         # reward = reward_multiplier * self.loc_cat_reward(categories=loc_cat)  # multiplier should be in the order of 100
-        # reward = reward_multiplier * self.avoid_area_reward(possible_locations=possible_locations) # multiplier should be negative and in the order of 1/100
+        reward = reward_multiplier * self.avoid_area_reward(possible_locations=possible_locations) # multiplier should be negative and in the order of 1/100
 
         nodes = self.generate_nodes(station_list=[self.position])
         future_q_values = self.generate_node_scores(node_list=nodes, Q_values=self.q_values)
