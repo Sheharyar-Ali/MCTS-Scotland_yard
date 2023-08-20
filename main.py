@@ -28,7 +28,7 @@ S4 = Player("seeker", start_locations[4], [8, 4, 20])
 Seekers = [S1, S2, S3, S4]
 
 Seekers_position = [S1.position, S2.position, S3.position, S4.position]
-normal_reward_multiplier = 1/10  # The reward multiplier for normal rounds
+normal_reward_multiplier = 1/100  # The reward multiplier for normal rounds
 reveal_reward_multiplier_Rl = 1  # The reward multiplier used in the backpropagation of the RL in the reveal round
 alpha_normal = 0.1  # "A study on automatic playing of Scotland Yard with RL and MCTS" (2018) by Cheng Qi and Chunyan Miao. Make it more aggressive
 gamma_normal = 0.9  # "A study on automatic playing of Scotland Yard with RL and MCTS" (2018) by Cheng Qi and Chunyan Miao.

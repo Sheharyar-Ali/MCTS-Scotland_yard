@@ -668,10 +668,4 @@ def MCTS(seekers, player, Round, Round_limit, possible_location, N, C, W, r, alp
     end_time = time.time()
     del Dummy_seekers
     print("time", end_time - start_time, counter, len(nodes[0]), len(nodes[1]), len(nodes[2]), len(nodes[3]) )
-    for i in range(len(nodes[2])):
-        node = nodes[2][i]
-        if node[0] == 184 and node[1] ==156:
-            print("156", q_values[2][i])
-        elif node[0] == 184 and node[1] == 197:
-            print("197", q_values[2][i])
     return chosen_node, average
