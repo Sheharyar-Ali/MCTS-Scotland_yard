@@ -140,6 +140,7 @@ def Arrange_seekers(seeker_list, player):
                 buffer.append(1000000)
         difference_combinations.append(buffer)
     difference_combinations = np.array(difference_combinations)
+
     best_score = 1E24
     best_combination = None
     combos = itertools.permutations(range(len(target_locations)), len(seeker_list))
@@ -153,9 +154,11 @@ def Arrange_seekers(seeker_list, player):
                 best_combination = combo
 
     if best_combination is None:
-        print(combos)
-        print(target_locations)
-        best_combination = list(combos)[0]
+        for combo in combos:
+            print(combo)
+            print(target_locations)
+            best_combination = combo
+
     chosen_targets = []
     print("best combo", best_combination)
     for i in range(len(seeker_list)):

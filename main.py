@@ -20,11 +20,11 @@ S1 = Player("seeker", start_locations[1], [8, 4, 20])
 S2 = Player("seeker", start_locations[2], [8, 4, 20])
 S3 = Player("seeker", start_locations[3], [8, 4, 20])
 S4 = Player("seeker", start_locations[4], [8, 4, 20])
-# X = Player("player", 197, [8, 3, 3])
-# S1 = Player("seeker", 153, [6, 4, 18])
-# S2 = Player("seeker", 183, [6, 2, 20])
-# S3 = Player("seeker", 184, [5, 3, 20])
-# S4 = Player("seeker", 191, [5, 4, 19])
+# X = Player("player", 163, [8, 3, 3])
+# S1 = Player("seeker", 142, [6, 4, 18])
+# S2 = Player("seeker", 111, [6, 2, 20])
+# S3 = Player("seeker", 167, [5, 3, 20])
+# S4 = Player("seeker", 197, [5, 4, 19])
 Seekers = [S1, S2, S3, S4]
 
 Seekers_position = [S1.position, S2.position, S3.position, S4.position]
