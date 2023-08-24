@@ -3,7 +3,9 @@ import math
 import pandas as pd
 import numpy as np
 
-file = open("Map_info_V2.csv")
+
+# Import data about the stations
+file = open("data_files/Map_info.csv")
 lines = file.readlines()
 Info = []
 Q_values = []
@@ -44,6 +46,7 @@ for line in lines:
         Info.append(buffer)
 file.close()
 
+# Get Q-value data from a file
 Q_Values_df = pd.DataFrame(columns=["origin", "destination", "transport", "value"])
 for data in Info:
     current_station = data[0]
@@ -55,7 +58,7 @@ for data in Info:
                 Q_Values_df.loc[len(Q_Values_df)] = node
 
 # Update q values
-file = open("q_values.csv")
+file = open("data_files/q_values.csv")
 lines = file.readlines()
 for line in lines:
     line = line[:-1]
@@ -72,6 +75,7 @@ for line in lines:
                 Q_Values_df["value"][i] = node[3]
 file.close()
 
+# Get location categorisation data
 Loc_file = open("Location_categorisation.csv")
 lines = Loc_file.readlines()
 for line in lines:

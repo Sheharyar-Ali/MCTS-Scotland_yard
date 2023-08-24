@@ -15,9 +15,17 @@ from data_read import loc_cat
 
 
 def weighted_selection(categories, probabilities):
+    """
+    Use the provided probabilities to select a category and a station
+    :param categories: list of stations in the three categories
+    :param probabilities: list of probabilities for each category
+    :return: chosen station
+    """
     cat_list = []
     prob_list = []
     chosen = 69
+
+    # Fill up a  list of categories and probabilities
     for i in range(len(categories)):
         category = categories[i]
         if len(category) >= 1:
@@ -28,6 +36,7 @@ def weighted_selection(categories, probabilities):
     random_number = np.random.uniform(0, total_probability)
     cumulative_prob = 0
 
+    # Make a choice based on cumulative probability
     for i in range(len(prob_list)):
         probability = prob_list[i]
         cumulative_prob += probability
@@ -50,9 +59,12 @@ def weighted_selection(categories, probabilities):
 
 def location_hider(player, possible_locations, loc_cat=loc_cat):
     """
-    Compiles a list of all possible locations that the player can be on. These are split into 3 categories and a
+    Get a possible location of the player from a list of possible locations. These are split into 3 categories and a
     weighted selection is performed to determine one station where the player can be.
-    :return: Possible location of Player
+    :param player: the player entity
+    :param possible_locations: the previous list of possible locations
+    :param loc_cat: data about the types of categories and their probabilities based on location categorisation
+    :return: possible location of the player
     """
     cat_1 = []  # Only taxis
     cat_2 = []  # bus + taxi
@@ -78,7 +90,7 @@ def location_hider(player, possible_locations, loc_cat=loc_cat):
 
 def Arrange_seekers(seeker_list, player):
     """
-    Creates a list of locations for the seekers to move to during the reveal round. The locations are those that are furthest from each seeker
+    Creates a list of locations for the seekers to move to during the reveal round.
     :param seeker_list: list of seekers
     :param player: Player entity
     :return: list containing the list of locations to move to
@@ -153,6 +165,7 @@ def Arrange_seekers(seeker_list, player):
                 best_score = score
                 best_combination = combo
 
+    # If there is any error, choose the latest combination
     if best_combination is None:
         for combo in combos:
             print(combo)
@@ -163,13 +176,17 @@ def Arrange_seekers(seeker_list, player):
     print("best combo", best_combination)
     for i in range(len(seeker_list)):
         chosen_targets.append(target_locations[best_combination[i]])
-    # chosen_targets = [target_locations[best_combination[0]], target_locations[best_combination[1]],
-    #                   target_locations[best_combination[2]]]
     print(chosen_targets)
     return chosen_targets
 
 
 def randomise_start_locations(Info, number_seekers):
+    """
+    Allocate random locations to seekers and player
+    :param Info: Information about the stations
+    :param number_seekers: number of seekers in the game
+    :return: list of starting locations for the seekers and player
+    """
     start_index = np.random.randint(0, len(Info), number_seekers + 1)
     while (len(set(start_index))) != len(start_index):
         start_index = np.random.randint(0, len(Info), number_seekers + 1)
@@ -181,6 +198,12 @@ def randomise_start_locations(Info, number_seekers):
 
 
 def write_loc_cat_file(file_name, loc_cat=loc_cat):
+    """
+    Update the csv file containing the location categorisatrion data
+    :param file_name: name of the csv file
+    :param loc_cat: data about the location categorisation
+    :return:
+    """
     file = open(file_name, "w", newline="")
     data = [{"a": loc_cat[0][0], "n": loc_cat[0][1]},
             {"a": loc_cat[1][0], "n": loc_cat[1][1]},
@@ -195,6 +218,20 @@ def write_loc_cat_file(file_name, loc_cat=loc_cat):
 
 def write_data_file(file_name, alpha_normal, gamma_normal, alpha_reveal, gamma_reveal, C, W, Caught, comments, Rounds,
                     coverage):
+    """
+    Write to the results file
+    :param file_name: name of the results file
+    :param alpha_normal: The alpha used for normal rounds
+    :param gamma_normal: The gamma used for the normal rounds
+    :param alpha_reveal: The alpha used for reveal rounds
+    :param gamma_reveal: The gamma used for reveal rounds
+    :param C: value of C used
+    :param W: value of W used
+    :param Caught: Boolean value showing if the seekers caught the player
+    :param comments: Information about this run
+    :param Rounds: Number of rounds played
+    :param coverage: the average coverage of the seekers
+    """
     file = open(file_name, "r")
     lines = file.readlines()
     read_data = pd.DataFrame(
@@ -214,18 +251,25 @@ def write_data_file(file_name, alpha_normal, gamma_normal, alpha_reveal, gamma_r
     read_data.loc[len(read_data)] = data_to_add
     read_data.to_csv(file_name)
 
-    return 0
-
 
 def write_q_file(file_name, Q_values):
+    """
+    Write to the csv file containing information about the q-values for all the nodes
+    :param file_name: name of the file
+    :param Q_values: list containing the q-values for all the nodes
+    """
     Q_Values_df = pd.DataFrame(columns=["origin", "destination", "transport", "value"])
     for entry in Q_values:
         Q_Values_df.loc[len(Q_Values_df)] = entry
     Q_Values_df.to_csv(file_name)
-    return 0
-
 
 def update_centralised_q_values(seekers, Q_values):
+    """
+    Get the average of the q-values for all the seekers. These values are then written to the csv file
+    :param seekers: list of seekers
+    :param Q_values: the list of Q-values to be updated
+    :return: Updated list of q-values
+    """
     individual_values = []
     for i in range(len(Q_values)):
         buffer = []
@@ -241,13 +285,25 @@ def update_centralised_q_values(seekers, Q_values):
 
 
 def update_possible_location_list(possible_locations, Info, seekers, ticket, player):
+    """
+    Update the list of possible locations using the previous list of possible locations and the last played ticket
+    :param possible_locations: original list of possible locations
+    :param Info: data about all the stations
+    :param seekers: list of seekers
+    :param ticket: The last ticket played by the player
+    :param player: the player entity
+    :return: updated list of possible locations
+    """
     loc_seekers = []
+
+    # Add the last played ticket to the player's inventory
+    # This makes sure that the generate_nodes function works properly
     player.tickets[ticket] += 1
     for seeker in seekers:
         loc_seekers.append(seeker.position)
 
     if possible_locations is None:
-        ## Find every station reachable using the provided ticket ##
+        ## Find every station reachable using the provided ticket if there is no original list of possible locations
         possible_locations = []
         Info_list = Info
         for i in range(len(Info)):
@@ -259,6 +315,7 @@ def update_possible_location_list(possible_locations, Info, seekers, ticket, pla
             check = False
             if station not in loc_seekers:
                 for j in range(len(Info_list)):
+                    check = False
                     target = Info_list[j][0]
                     if target in con[ticket]:
                         check = True
@@ -269,6 +326,7 @@ def update_possible_location_list(possible_locations, Info, seekers, ticket, pla
         for i in range(0, len(possible_locations)):
             station = possible_locations[i]
             nodes = player.generate_nodes([station])
+            # Add the stations that can be reached from the previous station using the specific ticket to the updated list
             for node in nodes:
                 if node[1] not in new_list and node[2] == ticket and node[1] not in loc_seekers:
                     new_list.append(node[1])
@@ -284,14 +342,25 @@ def update_possible_location_list(possible_locations, Info, seekers, ticket, pla
                 nodes = player.generate_nodes([station])
                 print("nodes", nodes)
 
+    # Remove any duplicates
     for station in loc_seekers:
         if station in possible_locations:
             possible_locations.remove(station)
+
+    # Remove the previously added ticket
     player.tickets[ticket] -= 1
     return possible_locations
 
 
-def Selection(seekers, nodes, leaf_nodes, C, W):
+def Selection(seekers, leaf_nodes, C, W):
+    """
+    Perform UCT selection for the MCTS
+    :param seekers: list of seekers
+    :param leaf_nodes: list containing all the leaf nodes to select from
+    :param C: value of C in the UCT equation
+    :param W: value of W in the UCT equation
+    :return: the index of the chosen node in the leaf nodes list, the chosen node and the agent this node belongs to
+    """
     selection_scores = []
     agent_list = []
     index_list = []
@@ -299,7 +368,8 @@ def Selection(seekers, nodes, leaf_nodes, C, W):
         agent = leaf_nodes[i]
         for k in range(len(agent)):
             node = agent[k]
-            if node != 0:
+            if node != 0 and node !=1:
+                # Only perform UCT on valid leaf nodes
                 v_i = seekers[i].UCT(parent=node[0], child=node[1], transport=node[2], C=C, W=W,
                                      Q_values=seekers[i].q_values,
                                      Visits=seekers[i].visits)
@@ -311,26 +381,35 @@ def Selection(seekers, nodes, leaf_nodes, C, W):
                 agent_list.append(i)
                 index_list.append(k)
 
+    # Choose the node with the greatest score
     chosen_leaf_node_index = np.argmax(np.array(selection_scores))
     chosen_agent = agent_list[chosen_leaf_node_index]
     chosen_index = index_list[chosen_leaf_node_index]
     chosen_node = leaf_nodes[chosen_agent][chosen_index]
-    # chosen_node_index = 0
-    # for i in range(len(nodes)):
-    #     node = nodes[i]
-    #     if chosen_node == node:
-    #         chosen_node_index = i
+
     return chosen_index, chosen_node, chosen_agent
 
 
 def Expansion(Dummy_seekers, agent, chosen_leaf_node_index, seeker):
+    """
+    Add a node to the leaf node for MCTS
+    :param Dummy_seekers: list of states of the seekers
+    :param agent: index of the seeker that this expansion is happening for
+    :param chosen_leaf_node_index: index of the leaf node to expand
+    :param seeker: the seeker that this expansion is happening for
+    :return: all possible moves for this seeker for this game state
+    """
     seeker_locations = []
     chosen_state = Dummy_seekers[agent][chosen_leaf_node_index]
+
+    # Get the positions of all seeker sin this game state
     for state in chosen_state:
         seeker_locations.append(state.position)
 
     check = []
     expanded_nodes = seeker.generate_nodes(station_list=[seeker.position])
+
+    # Remove already occupied nodes
     for node in expanded_nodes:
         if node[1] not in seeker_locations:
             check.append(node)
@@ -339,22 +418,37 @@ def Expansion(Dummy_seekers, agent, chosen_leaf_node_index, seeker):
 
 
 def Simulation(seekers, player, chosen_move, agent, possible_location, Round, Round_limit, coalition_reduction):
+    """
+    Simulate the rest of the game for MCTS
+    :param seekers: list of seekers
+    :param player: the player entity
+    :param chosen_move: the first move made for the seeker
+    :param agent: the agent this simulation belongs to
+    :param possible_location: the location being chased by the seekers
+    :param Round: the round for this simulation
+    :param Round_limit: the maximum number of rounds
+    :param coalition_reduction: coefficient for the coalition reduction function
+    :return: reward obtained after the simualtion is terminated
+    """
     Dummy_positions = []
     Dummies = []
 
     for seeker in seekers:
+        # Create copies of the seekers
+        # This prevents the simulation from affecting the position and ticket count of the real seekers
         Dummies.append(copy.deepcopy(seeker))
         Dummy_positions.append(seeker.position)
 
     reward = 0
 
+    # Create a copy of the player entity
     Player_sim = copy.deepcopy(player)
     Player_sim.position = possible_location
     Player_sim.get_info()
     Dummies = np.array(Dummies)
-    Player_sim.tickets[chosen_move[2]] += 1
-    # if reward > 0:
-    #     print(reward, chosen_move, (Initial_distance_difference - Final_distance_difference) / 100)
+    if chosen_move !=1:
+        Player_sim.tickets[chosen_move[2]] += 1
+
 
     sim_running = True
 
@@ -368,36 +462,43 @@ def Simulation(seekers, player, chosen_move, agent, possible_location, Round, Ro
             Dummy_positions[i] = best_move
             Player_sim.tickets[ticket_to_use] += 1
 
+    # Check if the seekers caught the player after this move
     for i in range(len(Dummies)):
         if Player_sim.caught(Dummies[i]):
             sim_running = False
             if i == agent:
-                reward += 10
+                reward += 2
             else:
-                reward += (1 - coalition_reduction) * 10
+                reward += (1 - coalition_reduction) * 2
 
 
     while sim_running:
+        # THis keeps track of how many simulation rounds have happened
         counter = 1
+
         # Player's move
         player_moves = []
         distances = []
         for Dummy in Dummies:
+            # Find out what the furthest station is for the player to move to for this dummy
             max_distance_target, transport = Player_sim.maximise_distance(target=Dummy.position,
                                                                           seeker_locs=Dummy_positions)
             if max_distance_target != 0:
+                # Add this to a list of possible moves and their average distance
                 player_moves.append([Player_sim.position, max_distance_target, transport])
                 distances.append(
                     Player_sim.get_average_distance_difference(station_1=max_distance_target,
                                                                station_2_list=Dummy_positions))
 
         if len(player_moves) > 0:
+            # Choose a move and move the player
             move_chosen = player_moves[np.argmax(np.array(distances))]
             Player_sim.move(destination=move_chosen[1], ticket=move_chosen[2], print_warning=True)
             possible_location = Player_sim.position
 
         # Seekers' move
         for i in range(len(Dummies)):
+            # Move the seekers to minimise the distance between them and the player
             best_move, ticket_to_use = Dummies[i].minimise_distance(destination=possible_location,
                                                                     exclude_stations=Dummy_positions, node_list=[])
             if best_move != 0:
@@ -408,9 +509,9 @@ def Simulation(seekers, player, chosen_move, agent, possible_location, Round, Ro
             if Dummies[i].caught(Player_sim):
                 sim_running = False
                 if i == agent:
-                    reward += 10
+                    reward += 2
                 else:
-                    reward += (1 - coalition_reduction) * 10
+                    reward += (1 - coalition_reduction) * 2
 
 
         Round += 1
@@ -426,9 +527,26 @@ def Simulation(seekers, player, chosen_move, agent, possible_location, Round, Ro
 
 
 def MCTS(seekers, player, Round, Round_limit, possible_location, N, C, W, r, alpha, gamma):
+    """
+    Run the MCTS algorithm for this location
+    :param seekers: list of seekers
+    :param player: player entity
+    :param Round: the current round
+    :param Round_limit: the maximum number of rounds
+    :param possible_location: one possible location of the player
+    :param N: Number of iterations for the MCTS
+    :param C: value of C for the UCT
+    :param W: value of W for the UCT
+    :param r: value of the coalition reduction for the Simulation
+    :param alpha: value of alpha for backpropagation
+    :param gamma: value of gamma for backpropagation
+    :return: list of moves for the seekers and the average q-value for these moves
+    """
     ## Initialise ##
     start_time = time.time()
     counter = 0
+
+    # Create a list of nodes, leaf nodes and q values
     nodes = [[]]
     expanded_node_list = [[]]
     leaf_nodes = [[]]
@@ -449,6 +567,7 @@ def MCTS(seekers, player, Round, Round_limit, possible_location, N, C, W, r, alp
     node_values = seekers[0].generate_node_scores(node_list=node_list, Q_values=seekers[0].q_values)
     q_values[0] = node_values
 
+
     # Create a snapshot of the state of the seekers for each move to be used later
     buffer = []
     for node in leaf_nodes[0]:
@@ -463,10 +582,15 @@ def MCTS(seekers, player, Round, Round_limit, possible_location, N, C, W, r, alp
         nodes.append([])
         expanded_node_list.append([])
 
+    for i in range(len(leaf_nodes[0])):
+        leaf_nodes[1].append(1)
+        Dummy_seekers[1].append(1)
+        expanded_node_list[1].append(1)
+
     while counter < N:
 
         ## Selection ##
-        chosen_leaf_node_index, chosen_node, agent = Selection(seekers=seekers, nodes=nodes,
+        chosen_leaf_node_index, chosen_node, agent = Selection(seekers=seekers,
                                                                leaf_nodes=leaf_nodes, C=C, W=W)
 
         if agent == 0:
@@ -474,7 +598,10 @@ def MCTS(seekers, player, Round, Round_limit, possible_location, N, C, W, r, alp
             seeker = seekers[agent]
             Dummies = Dummy_seekers[agent]
             # Advance the state of the particular seeker for this specific leaf node
-            (Dummies[chosen_leaf_node_index][agent]).move(destination=chosen_node[1], ticket=chosen_node[2], print_warning=True)
+            try:
+                (Dummies[chosen_leaf_node_index][agent]).move(destination=chosen_node[1], ticket=chosen_node[2], print_warning=True)
+            except TypeError:
+                print("seeker can not move in simulation")
 
             ## Simulation ##
             reward = Simulation(seekers=Dummies[chosen_leaf_node_index], player=player, chosen_move=chosen_node,
@@ -487,14 +614,18 @@ def MCTS(seekers, player, Round, Round_limit, possible_location, N, C, W, r, alp
                                                   list_values=[])
 
             q_values[agent][chosen_leaf_node_index] = updated_value
-            # new_identity = [chosen_node[0], chosen_node[1], chosen_node[2], updated_value]
-            # check = seeker.Update_Q_value_list(new_value=new_identity, Q_values=seeker.q_values)
+
 
             counter += 1
+
+            # Mark this leaf node as fully explored
             leaf_nodes[agent][chosen_leaf_node_index] = 0
-            leaf_nodes[agent + 1].append(chosen_node)
-            Dummy_seekers[agent + 1].append(copy.deepcopy(Dummies[chosen_leaf_node_index]))
-            expanded_node_list[agent + 1].append([])
+
+            # Add leaf nodes for the next seeker to expand on
+            leaf_nodes[agent+1][chosen_leaf_node_index] = chosen_node
+            # leaf_nodes[agent + 1].append(chosen_node)
+            Dummy_seekers[agent + 1][chosen_leaf_node_index] = copy.deepcopy(Dummies[chosen_leaf_node_index])
+            expanded_node_list[agent + 1][chosen_leaf_node_index] = []
 
 
 
@@ -504,32 +635,31 @@ def MCTS(seekers, player, Round, Round_limit, possible_location, N, C, W, r, alp
         elif len(leaf_nodes[agent]) > 0 and agent <= len(seekers):
             Dummies = Dummy_seekers[agent]
             seeker = seekers[agent]
-            # Dummies = Dummy_seekers[agent + 1]
+
 
 
             ## Expansion ##
             expanded_nodes = Expansion(Dummy_seekers=Dummy_seekers, agent=agent,
                                        chosen_leaf_node_index=chosen_leaf_node_index, seeker=seeker)
 
-            # seeker_locations = []
-            # chosen_state = Dummy_seekers[agent][chosen_leaf_node_index]
-            # for state in chosen_state:
-            #     seeker_locations.append(state.position)
-            #
-            # check = []
-            # expanded_nodes = seeker.generate_nodes(station_list=[seeker.position])
-            # for node in expanded_nodes:
-            #     if node[1] not in seeker_locations:
-            #         check.append(node)
-            # expanded_nodes = check
             current_index = 0
+
+            # Add a failsafe in case seeker is blocked on all sides
+            if len(expanded_nodes) ==0:
+                expanded_nodes.append(1)
+
             for i in range(len(expanded_nodes)):
                 sim_node = expanded_nodes[i]
 
+                # Choose a previously unchosen node
                 if sim_node not in expanded_node_list[agent][chosen_leaf_node_index]:
+
                     nodes[agent].append(sim_node)
                     q_value_indexes[agent - 1].append(chosen_leaf_node_index)
-                    (Dummies[chosen_leaf_node_index][agent]).move(destination=sim_node[1], ticket=sim_node[2], print_warning=True)
+                    try:
+                        (Dummies[chosen_leaf_node_index][agent]).move(destination=sim_node[1], ticket=sim_node[2], print_warning=True)
+                    except TypeError:
+                        print("seeker can not move in simulation")
                     expanded_node_list[agent][chosen_leaf_node_index].append(sim_node)
 
 
@@ -544,16 +674,22 @@ def MCTS(seekers, player, Round, Round_limit, possible_location, N, C, W, r, alp
 
 
             ## Backpropagation ##
-            current_value = seeker.get_Q_value(node=sim_node, Q_values=seeker.q_values)
-            seeker.Update_visit_count(position=sim_node[1], Visits=seeker.visits)
-            q_values[agent].append(current_value)
+            try:
+                current_value = seeker.get_Q_value(node=sim_node, Q_values=seeker.q_values)
+                seeker.Update_visit_count(position=sim_node[1], Visits=seeker.visits)
+                q_values[agent].append(current_value)
+            except TypeError:
+                # Only happens if a seeker is blocked on all sides
+                q_values[agent].append(-10)
+
+            # Create a path used by the q-value update function
             path = [current_index]  # Path of q_values indexes
             chosen_index = current_index
             path_values = []
-            # print("q values", q_values)
-            # print("q_ value indexes", q_value_indexes)
+
             for k in reversed(range(0, agent)):
                 try:
+                    # Find the corresponding index in the data for the previous seeker
                     node_number = q_value_indexes[k][chosen_index]
                     path.append(node_number)
                     chosen_index = node_number
@@ -562,15 +698,19 @@ def MCTS(seekers, player, Round, Round_limit, possible_location, N, C, W, r, alp
                     print("k", k)
                     print("chosen index", chosen_index)
                     print("q_value_indexes", q_value_indexes)
+                    print(path)
+                    print(leaf_nodes[agent-1])
+                    print(nodes)
             path.reverse()
-            # print("path", path)
+
             for j in range(len(path)):
                 node_to_choose = path[j]
                 value = q_values[j][node_to_choose]
+                # Add the corresponding q-values to a list
                 path_values.append(value)
-            # print("path values", path_values)
-            # calculate the new values
+
             for j in range(len(path)):
+                # update all the q-values in the path
                 current_value = path_values[j]
                 future_values = path_values[j:]
                 updated_value = seekers[j].Q_value_update(current_value=current_value, alpha=alpha, gamma=gamma,
@@ -592,9 +732,12 @@ def MCTS(seekers, player, Round, Round_limit, possible_location, N, C, W, r, alp
                 expanded_node_list[agent + 1].append([])
 
             # Undo the move made for the Simulation which updated the state
-            Dummies[chosen_leaf_node_index][agent].position = sim_node[0]
-            Dummies[chosen_leaf_node_index][agent].get_info()
-            Dummies[chosen_leaf_node_index][agent].tickets[sim_node[2]] +=1
+            try:
+                Dummies[chosen_leaf_node_index][agent].position = sim_node[0]
+                Dummies[chosen_leaf_node_index][agent].get_info()
+                Dummies[chosen_leaf_node_index][agent].tickets[sim_node[2]] +=1
+            except TypeError:
+                print("can not undo seeker blockage")
 
             # Remove fully explored leaf nodes
             check_sum = 0
@@ -614,7 +757,7 @@ def MCTS(seekers, player, Round, Round_limit, possible_location, N, C, W, r, alp
             length = len(node_list)
             check_sum = 0
             for node in node_list:
-                if node == 0:
+                if node == 0 or node ==1:
                     check_sum += 1
             if check_sum == length:
                 all_done[i] = 1
@@ -623,6 +766,7 @@ def MCTS(seekers, player, Round, Round_limit, possible_location, N, C, W, r, alp
             print("triggered", counter)
             counter = N + 42
 
+    # Create a list of values to be checked
     final_values = q_values[0]
     chosen_index = np.argmax(final_values)
     path = [chosen_index]
@@ -659,12 +803,15 @@ def MCTS(seekers, player, Round, Round_limit, possible_location, N, C, W, r, alp
 
     chosen_node = []
     chosen_q = []
+
+    # Choose the list of moves with the highest q-values
     for i in range(len(path)):
         chosen_node.append(nodes[i][path[i]])
         try:
             chosen_q.append(q_values[i][path[i]])
         except IndexError:
             sub_value = seekers[i].get_Q_value(node=nodes[i][path[i]])
+            chosen_q.append(sub_value)
 
 
     average = np.average(chosen_q)

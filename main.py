@@ -20,15 +20,15 @@ S1 = Player("seeker", start_locations[1], [8, 4, 20])
 S2 = Player("seeker", start_locations[2], [8, 4, 20])
 S3 = Player("seeker", start_locations[3], [8, 4, 20])
 S4 = Player("seeker", start_locations[4], [8, 4, 20])
-# X = Player("player", 163, [8, 3, 3])
-# S1 = Player("seeker", 142, [6, 4, 18])
-# S2 = Player("seeker", 111, [6, 2, 20])
-# S3 = Player("seeker", 167, [5, 3, 20])
-# S4 = Player("seeker", 197, [5, 4, 19])
+# X = Player("player", 128, [8, 3, 3])
+# S1 = Player("seeker", 157, [6, 4, 18])
+# S2 = Player("seeker", 142, [6, 2, 20])
+# S3 = Player("seeker", 104, [5, 3, 20])
+# S4 = Player("seeker", 152, [5, 4, 19])
 Seekers = [S1, S2, S3, S4]
 
 Seekers_position = [S1.position, S2.position, S3.position, S4.position]
-normal_reward_multiplier = 1/100  # The reward multiplier for normal rounds
+normal_reward_multiplier = 1/10  # The reward multiplier for normal rounds
 reveal_reward_multiplier_Rl = 1  # The reward multiplier used in the backpropagation of the RL in the reveal round
 alpha_normal = 0.1  # "A study on automatic playing of Scotland Yard with RL and MCTS" (2018) by Cheng Qi and Chunyan Miao. Make it more aggressive
 gamma_normal = 0.9  # "A study on automatic playing of Scotland Yard with RL and MCTS" (2018) by Cheng Qi and Chunyan Miao.
@@ -37,7 +37,7 @@ gamma_reveal = 0.9  # gamma for reveal rounds
 C_normal = 0.2
 W_normal = 50
 
-# location = 197
+# location = 143
 # print(MCTS(seekers=Seekers, player=X, Round=Round, Round_limit=Round_limit,
 #                                            possible_location=location, N=N,
 #                                            C=C_normal, W=W_normal, r=0, alpha=alpha_normal, gamma=gamma_normal))
@@ -57,7 +57,7 @@ while running:
           X.tickets[2])
     possible_moves = X.generate_nodes(station_list=[X.position])
     safe_moves = []
-    # Filter out occupied mstations
+    # Filter out occupied stations
     for i in range(len(possible_moves)):
         move = possible_moves[i]
         if move[1] not in Seekers_position and move[1] not in immobile_seeker_locations:
@@ -73,7 +73,10 @@ while running:
             print(" Choice ", i + 1, "Move to station: ", move[1], " using", Ticket(move[2]).name)
         chosen_move = 123
         while chosen_move > len(safe_moves) or chosen_move < 0:
-            chosen_move = int(input("Please indicate which move you want to make "))
+            try:
+                chosen_move = int(input("Please indicate which move you want to make "))
+            except ValueError:
+                chosen_move = len(safe_moves) + 1000
         move = safe_moves[chosen_move - 1]
         X.move(destination=move[1], ticket=move[2])
 
@@ -175,7 +178,7 @@ coverage = np.array(coverage)
 coverage = sum(coverage) / len(coverage)
 print("Average Coverage", coverage)
 Updated_q_values = update_centralised_q_values(seekers=Seekers, Q_values=Q_values)
-write_q_file(file_name="q_values.csv", Q_values=Updated_q_values)
-write_data_file(file_name="run_data.csv", alpha_normal=alpha_normal, gamma_normal=gamma_normal,
+write_q_file(file_name="data_files/q_values.csv", Q_values=Updated_q_values)
+write_data_file(file_name="data_files/run_data.csv", alpha_normal=alpha_normal, gamma_normal=gamma_normal,
                 alpha_reveal=alpha_reveal, gamma_reveal=gamma_reveal, C=C_normal, W=W_normal, Caught=caught,
                 comments=comment, Rounds=Round - 1, coverage=coverage)

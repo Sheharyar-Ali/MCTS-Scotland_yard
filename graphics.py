@@ -4,15 +4,29 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 def Draw_positions(player, seekers, immobile_seeker_locations):
+    """
+    Create a pygame window and draw the map and all relevant positions
+    :param player: player entity
+    :param seekers: list of seekers
+    :param immobile_seeker_locations: list of seekers that can not move anymore
+    """
     pg.init()
     pg.font.init()
+
+    # Window size
     window = (1500, 671)
-    map = pg.image.load("map.png")
+
+    # The map image
+    map = pg.image.load("Images/map.png")
     background = pg.transform.scale(map, window)
     screen = pg.display.set_mode(window)
     screen.fill((0, 0, 0))
+
+    # Draw the player's position
     player_station_info = player.get_station_info(station=player.position)
     pg.draw.circle(background, (0, 255, 0), player_station_info[1], 13, 5)
+
+    # Draw the seekers' positions
     for seeker in seekers:
         seeker_station_info = seeker.get_station_info(seeker.position)
         pg.draw.circle(background, (255, 0, 0), seeker_station_info[1], 13, 3)
@@ -24,7 +38,7 @@ def Draw_positions(player, seekers, immobile_seeker_locations):
     pg.display.flip()
 
 
-
+# Code used to find the positions of the stations
 # def find_red_circles(image_path):
 #     # Read the image
 #     image = cv2.imread(image_path)

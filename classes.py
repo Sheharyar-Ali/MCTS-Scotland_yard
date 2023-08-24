@@ -71,7 +71,8 @@ class Player:
         Move to target location. Updates the connections of the entity
         :param destination: Target station
         :param ticket: Ticket used to get to target station
-        :return: N/A
+        :param print_warning: Boolean indicating if the errors should be printed
+
         """
         if self.can_move(destination=destination, ticket=ticket, print_warning=print_warning):
             self.position = destination
@@ -98,9 +99,12 @@ class Player:
 
     def update_loc_cat(self, player, location_list, loc_cat=loc_cat):
         """
-        Updates the location categorisation information
-        :return: None
+        Updates the location categorisation data
+        :param player: player entity
+        :param location_list: list of locations
+        :param loc_cat: data about the location categorisation
         """
+
         for location in location_list:
             chosen_station_info = self.get_station_info(station=location)
             if chosen_station_info[3] != [0]:
@@ -119,21 +123,6 @@ class Player:
         else:
             loc_cat[0][0] += 1
 
-    def get_coverage(self):
-        """
-        Get the percentage of stations that have been visited at least once by the seeker during the MCTS simulation
-        :return: percentage explored
-        """
-        unexplored = 0
-        explored = 0
-        visit_count = self.visits
-        for visit in visit_count:
-            if visit[1] == 0:
-                unexplored += 1
-            else:
-                explored += 1
-        total_explored = explored / (unexplored + explored)
-        return total_explored
 
     def get_real_coverage(self):
         """
@@ -169,6 +158,13 @@ class Player:
         return generated_nodes
 
     def get_distance_difference(self, station_1, station_2, print_info=False):
+        """
+        Get the absolute difference between two stations
+        :param station_1: the first station
+        :param station_2: the second station
+        :param print_info: Boolean indicating if information needs to be printed
+        :return: absolute difference between station 1 and 2
+        """
         station_1_info = self.get_station_info(station=station_1)
         station_2_info = self.get_station_info(station=station_2)
         if print_info:
@@ -182,6 +178,13 @@ class Player:
         return difference
 
     def get_average_distance_difference(self, station_1, station_2_list, print_info=False):
+        """
+        Get the average difference between station 1 and a list of other stations
+        :param station_1: station 1
+        :param station_2_list: list of stations
+        :param print_info: Boolean indicating if information needs to be printed
+        :return: average difference in distance
+        """
         list = []
         for i in range(len(station_2_list)):
             station_1_info = self.get_station_info(station=station_1)
@@ -203,7 +206,7 @@ class Player:
         Get the node that minimises the distance between you and a target destination
         :param destination: target destination
         :param node_list: list of already explored nodes
-        :param exclude_stations: list of stations you should not move to
+        :param exclude_stations: list of stations you can not move to
         :return: The station you should move to and what transportation you should use
         """
         if exclude_stations is not None:
@@ -267,6 +270,17 @@ class Player:
         return chosen, ticket_used
 
     def UCT(self, parent, child, transport, C, W, Q_values, Visits):
+        """
+        Calculate the scores of the node based on UCT
+        :param parent: parent station (origin)
+        :param child: child station (destination)
+        :param transport: type of ticket used
+        :param C: value of C
+        :param W: value of W
+        :param Q_values: list of q-values
+        :param Visits: list containing the visit counts of all the stations
+        :return: UCT score for this node
+        """
         scores = []
         x_i = 0
         n_p = 0
@@ -427,7 +441,10 @@ class Player:
                     if self.can_move(destination=node[1], ticket=node[2]):
                         Best_move = node
         print("best move", Best_move)
-        self.move(destination=Best_move[1], ticket=Best_move[2])
+        try:
+            self.move(destination=Best_move[1], ticket=Best_move[2])
+        except TypeError:
+            print("Seeker has no viable moves")
 
         ## Backpropagation ##
         reward = self.distance_based_reward(player_location=player.position,
@@ -469,14 +486,20 @@ class Player:
 
         return probability
 
-    def avoid_area_reward(self, possible_locations):
-        distances = []
+    def avoid_area_reward(self, possible_locations, chosen_node):
+        distances_original = []
+        distances_new = []
         for location in possible_locations:
             distance = self.get_distance_difference(station_1=self.position, station_2=location)
-            distances.append(distance)
-        average = np.average(np.array(distances))
-        # Values are in the magnitude of 100
-        return average
+            distances_new.append(distance)
+            distance_old = self.get_distance_difference(station_1=chosen_node[0], station_2=location)
+            distances_original.append(distance_old)
+        average_old = np.average(np.array(distances_original))
+        average_new = np.average(np.array(distances_new))
+        delta = average_old - average_new
+        print("delta",delta)
+        # Values are in the magnitude of 10
+        return delta
 
     def RL_Backprop(self, move_made, reward_multiplier, alpha, gamma, seekers, possible_locations):
         # Based on total coverage achieved
@@ -488,7 +511,7 @@ class Player:
         # reward = reward_multiplier * self.total_coverage_reward(
         #     seekers=seekers)  # multiplier should be in the order of 100
         # reward = reward_multiplier * self.loc_cat_reward(categories=loc_cat)  # multiplier should be in the order of 100
-        reward = reward_multiplier * self.avoid_area_reward(possible_locations=possible_locations) # multiplier should be negative and in the order of 1/100
+        reward = reward_multiplier * self.avoid_area_reward(possible_locations=possible_locations, chosen_node=move_made) # multiplier should be in the order of 1/10
 
         nodes = self.generate_nodes(station_list=[self.position])
         future_q_values = self.generate_node_scores(node_list=nodes, Q_values=self.q_values)
