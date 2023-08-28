@@ -1,30 +1,26 @@
 from Program_files.classes import *
 from Program_files.graphics import *
 
-## Initialise ##
-comment = "Normal"
-running = True
-caught = False
-Round = 24
+## Setup ##
+comment = "Normal"  # Used to annotate the data set
+Round = 1
 Round_limit = 24
 Reveal_Rounds = [3, 8, 13, 18, 24]
+max_location_search = 15  # Change to select how many locations the MCTS is run for
+N_chosen = 1000  # Number of MCTS iterations
+
+## Initialise ##
+running = True
+caught = False
 Possible_locations_list = None  # Updated during reveal rounds
 immobile_seeker = None
-immobile_seeker_locations = [] # Contains all the seekers that are out of tickets
-max_location_search = 15
-N = 1000
-
+immobile_seeker_locations = []  # Contains all the seekers that are out of tickets
 start_locations = randomise_start_locations(Info=Info, number_seekers=4)
 X = Player("player", start_locations[0], [1, 1, 4])
 S1 = Player("seeker", start_locations[1], [8, 4, 20])
 S2 = Player("seeker", start_locations[2], [8, 4, 20])
 S3 = Player("seeker", start_locations[3], [8, 4, 20])
 S4 = Player("seeker", start_locations[4], [8, 4, 20])
-# X = Player("player", 154, [8, 3, 3])
-# S1 = Player("seeker", 157, [6, 4, 18])
-# S2 = Player("seeker", 142, [6, 2, 20])
-# S3 = Player("seeker", 104, [5, 3, 20])
-# S4 = Player("seeker", 152, [5, 4, 19])
 Seekers = [S1, S2, S3, S4]
 
 Seekers_position = [S1.position, S2.position, S3.position, S4.position]
@@ -37,11 +33,6 @@ gamma_reveal = 0.9  # gamma for reveal rounds
 C_normal = 0.2
 W_normal = 50
 
-# location = 170
-# print(MCTS(seekers=Seekers, player=X, Round=Round, Round_limit=Round_limit,
-#                                            possible_location=location, N=N,
-#                                            C=C_normal, W=W_normal, r=0, alpha=alpha_normal, gamma=gamma_normal, location_list=[170,116]))
-# exit()
 print("Seeker starting locations: Seeker 1: %s Seeker 2: %s Seeker 3: %s Seeker 4: %s " % (
     S1.position, S2.position, S3.position, S4.position))
 
@@ -56,7 +47,7 @@ while running:
     if Round in Reveal_Rounds:
         print("BE CAREFUL, SEEKERS WILL KNOW YOUR POSITION AFTER THIS MOVE")
     print("Your current location is: ", X.position)
-    print("You have the following tickets available: Bus %s Undergorund %s Taxi %s" % (
+    print("You have the following tickets available: Bus %s Underground %s Taxi %s" % (
         X.tickets[0], X.tickets[1], X.tickets[2]))
     possible_moves = X.generate_nodes(station_list=[X.position])
     safe_moves = []
@@ -83,7 +74,7 @@ while running:
             except ValueError:
                 chosen_move = len(safe_moves) + 1000
 
-    # Move the player
+        # Move the player
         move = safe_moves[chosen_move - 1]
         X.move(destination=move[1], ticket=move[2])
 
@@ -113,22 +104,21 @@ while running:
                     List_copy.remove(chosen_location)
         else:
             location_list_short = Possible_locations_list
-            N = 1000
-
-        print("location list", location_list_short)
+            N = N_chosen
 
         # Do MCTS to determine the seekers' moves
-        for location in location_list_short:
+        for i in range(len(location_list_short)):
+            location = location_list_short[i]
+            print("Checking location %s out of %s " % (i + 1, len(location_list_short)))
             seeker_move, move_score = MCTS(seekers=Seekers, player=X, Round=Round, Round_limit=Round_limit,
                                            possible_location=location, N=N,
                                            C=C_normal, W=W_normal, r=0.2, alpha=alpha_normal, gamma=gamma_normal,
                                            location_list=location_list_short)
             seeker_moves.append(seeker_move)
             seeker_move_scores.append(move_score)
-        print(seeker_moves)
-        print(seeker_move_scores)
+
+        # Choose the moves
         move_chosen = seeker_moves[np.argmax(seeker_move_scores)]
-        print("chosen location", location_list_short[np.argmax(seeker_move_scores)])
 
         # Move the seekers
         for i in range(len(Seekers)):
@@ -140,18 +130,26 @@ while running:
 
                 # If the seeker has a valid move
                 if seeker_move != [0, 0, 0]:
-                    seeker.move(destination=seeker_move[1], ticket=seeker_move[2], print_warning=True)
-                    print("Seeker %s moved to %s from %s using %s . Tickets remaining %s" % (
-                    i + 1, seeker.position, seeker_move[0], Ticket(seeker_move[2]).name, seeker.tickets))
-                    X.tickets[seeker_move[2]] += 1
-                    if seeker.caught(other_player=X):
-                        running = False
-                        print("Seeker", i + 1, "has caught Mr X!!!")
-                        caught = True
-                    seeker.RL_Backprop(move_made=seeker_move, reward_multiplier=normal_reward_multiplier,
-                                       alpha=alpha_normal, gamma=gamma_normal, seekers=Seekers,
-                                       possible_locations=location_list_short)
+                    try:
+                        seeker.move(destination=seeker_move[1], ticket=seeker_move[2], print_warning=True)
+                        print("Seeker %s moved to %s from %s using %s . Tickets remaining %s" % (
+                            i + 1, seeker.position, seeker_move[0], Ticket(seeker_move[2]).name, seeker.tickets))
+                        X.tickets[seeker_move[2]] += 1
+                        if seeker.caught(other_player=X):
+                            running = False
+                            print("Seeker", i + 1, "has caught Mr X!!!")
+                            caught = True
+                        seeker.RL_Backprop(move_made=seeker_move, reward_multiplier=normal_reward_multiplier,
+                                           alpha=alpha_normal, gamma=gamma_normal, seekers=Seekers,
+                                           possible_locations=location_list_short)
+                    except TypeError:
+                        print("Seeker %s could not be moved" % (i + 1))
+                        immobile_seeker = seeker
+                        if seeker.position not in immobile_seeker_locations:
+                            immobile_seeker_locations.append(seeker.position)
+
                 else:
+                    print("Seeker %s could not be moved" % (i + 1))
                     immobile_seeker = seeker
                     if seeker.position not in immobile_seeker_locations:
                         immobile_seeker_locations.append(seeker.position)
@@ -182,9 +180,8 @@ while running:
 
     Round += 1
 
-
     if immobile_seeker is not None:
-        Seekers.remove(immobile_seeker) # Remove the immobile seeker from the list of seekers
+        Seekers.remove(immobile_seeker)  # Remove the immobile seeker from the list of seekers
         immobile_seeker = None
         print("Immobile Seeker removed")
 
@@ -195,8 +192,6 @@ while running:
 
     if Round > Round_limit:
         running = False
-
-print(loc_cat)
 
 # Get the coverage statistics
 for seeker in Seekers:
@@ -209,8 +204,8 @@ print("Time taken", time.time() - start_time)
 
 # Update the Relevant data files
 write_loc_cat_file("data_files/Location_categorisation.csv")
-Updated_q_values = update_centralised_q_values(seekers=Seekers, Q_values=Q_values)
-write_q_file(file_name="data_files/q_values.csv", Q_values=Updated_q_values)
+# Updated_q_values = update_centralised_q_values(seekers=Seekers, Q_values=Q_values)
+# write_q_file(file_name="data_files/q_values.csv", Q_values=Updated_q_values)
 write_data_file(file_name="data_files/run_data.csv", alpha_normal=alpha_normal, gamma_normal=gamma_normal,
                 alpha_reveal=alpha_reveal, gamma_reveal=gamma_reveal, C=C_normal, W=W_normal, Caught=caught,
                 comments=comment, Rounds=Round - 1, coverage=coverage)

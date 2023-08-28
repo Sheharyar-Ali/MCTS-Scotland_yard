@@ -1,10 +1,11 @@
 import math
-
+import os
 import pandas as pd
 import numpy as np
 
+
 # Import data about the stations
-file = open("../data_files/Map_info.csv")
+file = open(os.path.abspath("data_files/Map_info.csv"))
 lines = file.readlines()
 Info = []
 Q_values = []
@@ -57,7 +58,7 @@ for data in Info:
                 Q_Values_df.loc[len(Q_Values_df)] = node
 
 # Update q values
-file = open("../data_files/q_values.csv")
+file = open(os.path.abspath("data_files/q_values.csv"))
 lines = file.readlines()
 for line in lines:
     line = line[:-1]
@@ -75,7 +76,7 @@ for line in lines:
 file.close()
 
 # Get location categorisation data
-Loc_file = open("../data_files/Location_categorisation.csv")
+Loc_file = open(os.path.abspath("data_files/Location_categorisation.csv"))
 lines = Loc_file.readlines()
 for line in lines:
     line = line[:-1]
@@ -90,6 +91,7 @@ def Get_statistics(file_name, case):
     data = pd.DataFrame(columns=["Caught", "Rounds", "Coverage"])
     var_win = []
     var_cov = []
+    var_cov_full = []
     for line in lines:
         line = line[:-1]
         columns = line.split(",")
@@ -99,15 +101,20 @@ def Get_statistics(file_name, case):
     win_rate = len(data[data["Caught"] == "TRUE"]) / len(data)
     mean_rounds = data["Rounds"].mean(axis=0)
     mean_coverage = data["Coverage"].mean(axis=0)
-    mean_coverage_full_games = data[data["Caught"] == "TRUE"]["Coverage"].mean(axis=0)
+    mean_coverage_full_games = data[data["Caught"] == "FALSE"]["Coverage"].mean(axis=0)
     for i in range(len(data)):
         entry = data.iloc[i]
         if entry["Caught"] == "TRUE":
             var_win.append((1 - win_rate) ** 2 )
         else:
             var_win.append((0 - win_rate) ** 2 )
-        var_cov.append((entry["Coverage"] - mean_coverage)**2 / (len(data) - 1))
+            var_cov_full.append((entry["Coverage"] - mean_coverage_full_games) ** 2)
+        var_cov.append((entry["Coverage"] - mean_coverage)**2 )
+
     std_win = np.sqrt(np.sum(np.array(var_win)) / (len(data) - 1))
     std_cov = np.sqrt(np.sum(np.array(var_cov)) / (len(data) - 1))
+    std_full = np.sqrt(np.sum(np.array(var_cov_full)) / (len(data) - 1))
 
-    return win_rate * 100, mean_rounds, mean_coverage * 100, mean_coverage_full_games * 100, std_win * 100 , std_cov * 100
+    return win_rate * 100, mean_rounds, mean_coverage * 100, mean_coverage_full_games * 100, std_win * 100 , std_cov * 100, std_full * 100
+
+# print(Get_statistics(file_name=os.path.abspath("data_files/run_data.csv"), case="Sens_coverage_reward"))

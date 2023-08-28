@@ -1,6 +1,6 @@
 import numpy as np
-from data_read import Info, Q_values, Visits, loc_cat
-from functions import *
+from Program_files.data_read import Info, Q_values, Visits, loc_cat
+from Program_files.functions import *
 import copy
 from enum import Enum
 
@@ -68,7 +68,7 @@ class Player:
 
     def move(self, destination, ticket, print_warning=False):
         """
-        Move to target location. Updates the connections of the entity
+        Move to target location. Updates the connections of the entity.
         :param destination: Target station
         :param ticket: Ticket used to get to target station
         :param print_warning: Boolean indicating if the errors should be printed
@@ -78,7 +78,6 @@ class Player:
             self.position = destination
             self.tickets[ticket] -= 1
             self.get_info()
-            self.Update_visit_count(position=destination, Visits=self.real_visits)
             if self.position == "player":
                 print("Player moved to station: ", self.position)
         elif print_warning:
@@ -479,9 +478,11 @@ class Player:
                 for node in nodes:
                     if self.can_move(destination=node[1], ticket=node[2]):
                         Best_move = node
-        print("best move", Best_move)
+
         try:
             self.move(destination=Best_move[1], ticket=Best_move[2])
+            print("Seeker moved to ", Best_move[1])
+            self.Update_visit_count(position=Best_move[1], Visits=self.real_visits)
         except TypeError:
             print("Seeker has no viable moves")
 
@@ -552,7 +553,6 @@ class Player:
         average_old = np.average(np.array(distances_original))
         average_new = np.average(np.array(distances_new))
         delta = average_old - average_new
-        print("delta",delta)
         # Values are in the magnitude of 10
         return delta
 
@@ -570,13 +570,15 @@ class Player:
         # Based on avoiding safe locations
         # Based on location categorisation
 
+        # Get the original visit count and update it (used for coverage based reward)
         original_average_coverage = self.total_coverage(seekers=seekers)
+        self.Update_visit_count(position=move_made[1], Visits=self.real_visits)
         new_coverage = self.get_real_coverage()
         self.real_coverage = new_coverage  # Update the real coverage
         new_average_coverage = self.total_coverage(seekers=seekers)
 
         # reward = reward_multiplier * (new_average_coverage - original_average_coverage)  # multiplier should be in the order of 100
-        # reward = reward_multiplier * self.loc_cat_reward(categories=loc_cat)  # multiplier should be in the order of 100
+        # reward = reward_multiplier * self.loc_cat_reward(categories=loc_cat)  # multiplier should be in the order of 1
         reward = reward_multiplier * self.avoid_area_reward(possible_locations=possible_locations, chosen_node=move_made) # multiplier should be in the order of 1/10
 
         nodes = self.generate_nodes(station_list=[self.position])
@@ -584,6 +586,5 @@ class Player:
         current_value = self.get_Q_value(node=move_made, Q_values=self.q_values)
         updated_value = self.Q_value_update(current_value=current_value, alpha=alpha, gamma=gamma, reward=reward,
                                             list_values=future_q_values)
-        print(updated_value)
         new_identity = [move_made[0], move_made[1], move_made[2], updated_value]
         self.Update_Q_value_list(new_value=new_identity)

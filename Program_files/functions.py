@@ -8,7 +8,7 @@ import itertools
 
 import pandas as pd
 
-from data_read import loc_cat
+from Program_files.data_read import loc_cat
 
 
 # np.random.seed(1)
@@ -74,8 +74,7 @@ def location_hider(player, possible_locations, loc_cat=loc_cat):
             cat_2.append(location)
         else:
             cat_1.append(location)
-    if len(cat_1) == 0 and len(cat_2) == 0 and len(cat_3) == 0:
-        print(possible_locations)
+
 
     categories = [cat_1, cat_2, cat_3]
     probabilities = [loc_cat[0][0] / loc_cat[0][1], loc_cat[1][0] / loc_cat[1][1], loc_cat[2][0] / loc_cat[2][1]]
@@ -114,6 +113,7 @@ def Arrange_seekers(seeker_list, player):
         else:
             categories[0].append(station)
 
+
     # If you have more connections than seekers
     if len(station_list) > len(seeker_list):
         for i in range(len(seeker_list)):
@@ -124,10 +124,12 @@ def Arrange_seekers(seeker_list, player):
                     category.remove(to_add)
 
     # If you have fewer connections than seekers
+    # Use weighted selection to add stations to the list
     elif len(station_list) < len(seeker_list):
         for i in range(len(station_list)):
             target_locations.append(station_list[i])
-        difference = abs(len(all_moves) - len(seeker_list))
+        difference = abs(len(station_list) - len(seeker_list))
+
         for i in range(difference):
             to_add = weighted_selection(categories=categories, probabilities=probabilities)
             target_locations.append(to_add)
@@ -163,8 +165,6 @@ def Arrange_seekers(seeker_list, player):
     # If there is any error, choose the latest combination
     if best_combination is None:
         for combo in combos:
-            print(combo)
-            print(target_locations)
             best_combination = combo
 
     chosen_targets = []
@@ -336,17 +336,11 @@ def update_possible_location_list(possible_locations, Info, seekers, ticket, pla
                 for node in nodes:
                     if node[1] not in new_list and node[2] == ticket and node[1] not in loc_seekers:
                         new_list.append(node[1])
+
+        # Update the list
         if len(new_list) > 0:
             possible_locations = new_list
-        else:
-            print("ERROR WITH POSSIBLE LOCATIONS")
-            print("possible location", possible_locations)
-            print("loc seekers", loc_seekers)
-            print("tickets", player.tickets)
-            for i in range(0, len(possible_locations)):
-                station = possible_locations[i]
-                nodes = player.generate_nodes([station])
-                print("nodes", nodes)
+
 
     # Remove any duplicates
     for station in loc_seekers:
@@ -782,7 +776,6 @@ def MCTS(seekers, player, Round, Round_limit, possible_location, N, C, W, r, alp
                 all_done[i] = 1
         all_done = np.array(all_done)
         if np.sum(all_done) == len(seekers):
-            print("triggered", counter)
             counter = N + 42
 
     # Create a list of values to be checked
@@ -825,5 +818,4 @@ def MCTS(seekers, player, Round, Round_limit, possible_location, N, C, W, r, alp
     average = np.average(chosen_q)
     end_time = time.time()
     del Dummy_seekers
-    print("time", end_time - start_time, counter, len(nodes[0]), len(nodes[1]), len(nodes[2]), len(nodes[3]))
     return chosen_node, average

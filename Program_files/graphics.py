@@ -1,4 +1,5 @@
 import pygame as pg
+import os
 # import cv2
 import numpy as np
 import matplotlib.pyplot as plt
@@ -17,7 +18,7 @@ def Draw_positions(player, seekers, immobile_seeker_locations):
     window = (1500, 671)
 
     # The map image
-    map = pg.image.load("../Images/map.png")
+    map = pg.image.load(os.path.abspath("Images/map.png"))
     background = pg.transform.scale(map, window)
     screen = pg.display.set_mode(window)
     screen.fill((0, 0, 0))
